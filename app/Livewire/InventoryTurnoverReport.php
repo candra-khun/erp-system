@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\InteractsWithWarehouseAccess;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\StockMovement;
-use App\Models\Warehouse;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -15,6 +15,9 @@ use Livewire\Component;
 #[Layout('components.layouts.erp', ['title' => 'Laporan Perputaran Stok'])]
 class InventoryTurnoverReport extends Component
 {
+    /** @use InteractsWithWarehouseAccess<self> */
+    use InteractsWithWarehouseAccess;
+
     public string $startDate = '';
 
     public string $endDate = '';
@@ -31,7 +34,8 @@ class InventoryTurnoverReport extends Component
 
     public function render(): View
     {
-        $warehouses = Warehouse::orderBy('name')->get(['id', 'name']);
+        $this->filterWarehouseId = $this->clampWarehouseId($this->filterWarehouseId);
+        $warehouses = $this->accessibleWarehouseOptions();
         $categories = ProductCategory::orderBy('name')->get(['id', 'name']);
 
         $productsQuery = Product::with(['category', 'stocks'])

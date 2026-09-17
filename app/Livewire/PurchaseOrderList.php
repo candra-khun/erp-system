@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace App\Livewire;
 
 use App\Enums\PurchaseOrderStatus;
+use App\Livewire\Concerns\InteractsWithWarehouseAccess;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
-use App\Models\Warehouse;
+use App\Rules\WarehouseAccessible;
 use App\Services\PurchaseOrderService;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
@@ -18,7 +19,8 @@ use Livewire\WithPagination;
 #[Layout('components.layouts.erp', ['title' => 'Purchase Order'])]
 class PurchaseOrderList extends Component
 {
-    use WithPagination;
+    /** @use InteractsWithWarehouseAccess<self> */
+    use InteractsWithWarehouseAccess, WithPagination;
 
     #[Url]
     public string $search = '';
@@ -45,7 +47,7 @@ class PurchaseOrderList extends Component
 
     public ?int $receivePoId = null;
 
-    /** @var list<array{purchase_order_item_id: int, product_name: string, ordered: float, received: float, quantity: string}> */
+    /** @var list<array{purchase_order_item_id: int, product_name: string, ordered: float, received: float, quantity: string, batch_number: string, expiry_date: string}> */
     public array $receiveItems = [];
 
     public function updatingSearch(): void
@@ -82,7 +84,7 @@ class PurchaseOrderList extends Component
     {
         $this->validate([
             'supplier_id' => 'required|exists:suppliers,id',
-            'warehouse_id' => 'required|exists:warehouses,id',
+            'warehouse_id' => ['required', 'exists:warehouses,id', new WarehouseAccessible],
             'order_date' => 'required|date',
             'expected_delivery_date' => 'nullable|date|after_or_equal:order_date',
             'items' => 'required|array|min:1',
@@ -166,6 +168,8 @@ class PurchaseOrderList extends Component
                 'ordered' => (float) $item->quantity,
                 'received' => (float) $item->received_quantity,
                 'quantity' => (string) max(0, (float) $item->quantity - (float) $item->received_quantity),
+                'batch_number' => '',
+                'expiry_date' => '',
             ])
             ->values()
             ->all();
@@ -177,12 +181,21 @@ class PurchaseOrderList extends Component
     {
         $po = PurchaseOrder::findOrFail($this->receivePoId);
 
+        $this->validate([
+            'receiveItems' => 'required|array|min:1',
+            'receiveItems.*.quantity' => 'required|numeric|min:0',
+            'receiveItems.*.batch_number' => 'nullable|string|max:100',
+            'receiveItems.*.expiry_date' => 'nullable|date|after_or_equal:today',
+        ]);
+
         $payload = [];
         foreach ($this->receiveItems as $ri) {
             if ((float) $ri['quantity'] > 0) {
                 $payload[] = [
                     'purchase_order_item_id' => $ri['purchase_order_item_id'],
                     'quantity' => (float) $ri['quantity'],
+                    'batch_number' => $ri['batch_number'] !== '' ? $ri['batch_number'] : null,
+                    'expiry_date' => $ri['expiry_date'] !== '' ? $ri['expiry_date'] : null,
                 ];
             }
         }
@@ -228,7 +241,7 @@ class PurchaseOrderList extends Component
             'purchaseOrders' => $query->paginate(15),
             'statuses' => PurchaseOrderStatus::cases(),
             'suppliers' => Supplier::orderBy('name')->get(['id', 'name']),
-            'warehouses' => Warehouse::orderBy('name')->get(['id', 'name']),
+            'warehouses' => $this->accessibleWarehouseOptions(),
             'products' => Product::where('is_active', true)->orderBy('name')->get(['id', 'sku', 'name']),
         ]);
     }

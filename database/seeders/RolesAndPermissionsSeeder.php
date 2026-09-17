@@ -32,9 +32,19 @@ class RolesAndPermissionsSeeder extends Seeder
         'sales' => [
             'manage-sales',
             'use-pos',
+            'manage-logistics',
         ],
         'finance' => [
             'manage-finance',
+        ],
+        'hr' => [
+            'manage-employees',
+            'manage-payroll',
+        ],
+        'integrations' => [
+            'manage-marketplace',
+            'manage-gateway',
+            'manage-consignment',
         ],
         'system' => [
             'view-dashboard',
@@ -52,12 +62,13 @@ class RolesAndPermissionsSeeder extends Seeder
             'manage-products', 'manage-suppliers', 'manage-customers', 'manage-warehouses',
             'view-inventory', 'manage-transfers', 'manage-opnames',
             'manage-purchases', 'manage-sales', 'use-pos', 'view-dashboard',
+            'manage-employees', 'manage-consignment',
         ],
         'kasir' => ['use-pos', 'view-dashboard'],
         'staff_gudang' => ['view-inventory', 'manage-transfers', 'manage-opnames', 'view-dashboard'],
         'staff_pembelian' => ['manage-purchases', 'manage-suppliers', 'view-inventory', 'view-dashboard'],
-        'staff_keuangan' => ['manage-finance', 'view-dashboard'],
-        'sales_marketing' => ['manage-sales', 'manage-customers', 'view-dashboard'],
+        'staff_keuangan' => ['manage-finance', 'manage-payroll', 'view-dashboard'],
+        'sales_marketing' => ['manage-sales', 'manage-customers', 'manage-logistics', 'manage-marketplace', 'view-dashboard'],
         'owner' => ['view-dashboard'],
     ];
 

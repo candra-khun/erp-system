@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\DB;
 
 class StockOpnameService
 {
+    public function __construct(private readonly TransactionAuditLogger $audit) {}
+
     /**
      * Approve a completed stock opname and apply adjustments to stock.
      * Each difference triggers a StockChanged event so the standard
@@ -51,6 +53,24 @@ class StockOpnameService
                 'approved_by' => $approvedByUserId,
                 'completed_at' => $opname->completed_at ?? now(),
             ]);
+
+            $this->audit->log(
+                $opname,
+                'stock_opname_approved',
+                null,
+                [
+                    'opname_number' => $opname->opname_number,
+                    'adjusted_items' => collect($items)
+                        ->filter(fn ($item) => abs((float) $item->difference) >= 0.001)
+                        ->map(fn ($item) => [
+                            'product_id' => $item->product_id,
+                            'difference' => (float) $item->difference,
+                        ])
+                        ->values()
+                        ->all(),
+                ],
+                $approvedByUserId,
+            );
         });
     }
 

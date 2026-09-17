@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\InteractsWithWarehouseAccess;
 use App\Models\Product;
+use App\Models\ProductUnit;
 use App\Models\StockTransfer;
-use App\Models\Warehouse;
+use App\Rules\WarehouseAccessible;
 use App\Services\StockTransferService;
+use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -16,7 +19,8 @@ use Livewire\WithPagination;
 #[Layout('components.layouts.erp', ['title' => 'Transfer Stok'])]
 class StockTransferList extends Component
 {
-    use WithPagination;
+    /** @use InteractsWithWarehouseAccess<self> */
+    use InteractsWithWarehouseAccess, WithPagination;
 
     #[Url]
     public string $search = '';
@@ -29,7 +33,7 @@ class StockTransferList extends Component
 
     public string $notes = '';
 
-    /** @var list<array{product_id: string, quantity: float|int|string}> */
+    /** @var list<array{product_id: string, quantity: float|int|string, unit_id: string}> */
     public array $items = [];
 
     /** @var list<array{stock_transfer_item_id: int, quantity: float|int|string}> */
@@ -48,13 +52,13 @@ class StockTransferList extends Component
     {
         $this->reset(['source_warehouse_id', 'destination_warehouse_id', 'notes', 'items']);
         $this->resetErrorBag();
-        $this->items = [['product_id' => '', 'quantity' => 1]];
+        $this->items = [['product_id' => '', 'quantity' => 1, 'unit_id' => '']];
         $this->showForm = true;
     }
 
     public function addItem(): void
     {
-        $this->items[] = ['product_id' => '', 'quantity' => 1];
+        $this->items[] = ['product_id' => '', 'quantity' => 1, 'unit_id' => ''];
     }
 
     public function removeItem(int $index): void
@@ -66,11 +70,12 @@ class StockTransferList extends Component
     public function store(): void
     {
         $this->validate([
-            'source_warehouse_id' => 'required|exists:warehouses,id',
-            'destination_warehouse_id' => 'required|exists:warehouses,id|different:source_warehouse_id',
+            'source_warehouse_id' => ['required', 'exists:warehouses,id', new WarehouseAccessible],
+            'destination_warehouse_id' => ['required', 'exists:warehouses,id', 'different:source_warehouse_id', new WarehouseAccessible],
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|numeric|min:0.01',
+            'items.*.unit_id' => 'nullable|exists:product_units,id',
         ]);
 
         try {
@@ -159,9 +164,57 @@ class StockTransferList extends Component
             ->latest()
             ->paginate(15);
 
-        $warehouses = Warehouse::orderBy('name')->get(['id', 'name']);
+        $warehouses = $this->accessibleWarehouseOptions();
         $products = Product::where('is_active', true)->orderBy('name')->get(['id', 'sku', 'name']);
 
-        return view('livewire.stock-transfer-list', compact('transfers', 'warehouses', 'products'));
+        // Satuan jual per produk (dasar + turunannya) untuk dropdown transfer
+        $unitOptionsByProduct = $this->unitOptionsByProduct(
+            $products->pluck('id')->all()
+        );
+
+        return view('livewire.stock-transfer-list', compact('transfers', 'warehouses', 'products', 'unitOptionsByProduct'));
+    }
+
+    /**
+     * Opsi satuan (dasar + turunan) untuk setiap produk yang diberikan.
+     *
+     * @param  list<int>  $productIds
+     * @return array<int, Collection<int, ProductUnit>>
+     */
+    private function unitOptionsByProduct(array $productIds): array
+    {
+        if ($productIds === []) {
+            return [];
+        }
+
+        $baseUnitIds = Product::whereIn('id', $productIds)
+            ->pluck('base_unit_id', 'id')
+            ->map(fn ($v) => $v !== null ? (int) $v : null);
+
+        $familyIds = $baseUnitIds->filter()->unique()->values()->all();
+
+        if ($familyIds === []) {
+            return [];
+        }
+
+        $units = ProductUnit::where(function ($q) use ($familyIds): void {
+            $q->whereIn('id', $familyIds)->orWhereIn('base_unit_id', $familyIds);
+        })
+            ->orderBy('name')
+            ->get(['id', 'name', 'symbol', 'base_unit_id', 'is_base', 'conversion_factor']);
+
+        $options = [];
+        foreach ($baseUnitIds as $productId => $baseUnitId) {
+            if (! $baseUnitId) {
+                continue;
+            }
+
+            $options[(int) $productId] = $units->filter(
+                fn (ProductUnit $u) => (int) $u->id === $baseUnitId
+                    || (int) ($u->base_unit_id ?? 0) === $baseUnitId
+            )->values();
+        }
+
+        return $options;
     }
 }

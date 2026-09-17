@@ -115,8 +115,10 @@ class ChartOfAccounts extends Component
     public function render(): View
     {
         $query = Account::with('parent')
-            ->when($this->search, fn ($q) => $q->where('code', 'like', "%{$this->search}%")
-                ->orWhere('name', 'like', "%{$this->search}%"))
+            ->when($this->search, fn ($q) => $q->where(function ($sub) {
+                $sub->where('code', 'like', "%{$this->search}%")
+                    ->orWhere('name', 'like', "%{$this->search}%");
+            }))
             ->orderBy('code');
 
         return view('livewire.chart-of-accounts', [

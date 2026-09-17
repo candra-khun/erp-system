@@ -88,6 +88,33 @@
                     <textarea wire:model="description" rows="2" class="w-full border-gray-300 rounded-md shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Opsional"></textarea>
                 </div>
 
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Gambar Produk</label>
+                    <div class="flex items-start gap-4">
+                        <div class="w-24 h-24 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+                            @if($image && method_exists($image, 'isPreviewable') && $image->isPreviewable())
+                                <img src="{{ $image->temporaryUrl() }}" alt="Pratinjau" class="w-full h-full object-cover">
+                            @elseif($image)
+                                <span class="text-xs text-gray-500 text-center px-1">File terpilih</span>
+                            @elseif($existingImage)
+                                <img src="{{ Storage::disk('public')->url($existingImage) }}" alt="Gambar produk" class="w-full h-full object-cover">
+                            @else
+                                <span class="text-xs text-gray-400">Tanpa gambar</span>
+                            @endif
+                        </div>
+                        <div class="flex-1 space-y-2">
+                            <input type="file" wire:model="image" accept="image/*"
+                                   class="block w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                            <div wire:loading wire:target="image" class="text-xs text-blue-600">Mengunggah...</div>
+                            @error('image') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
+                            @if($existingImage || $image)
+                                <button type="button" wire:click="removeImage" class="text-xs text-red-600 hover:text-red-800 font-medium">Hapus gambar</button>
+                            @endif
+                            <p class="text-xs text-gray-400">JPG, PNG, WEBP. Maks 2 MB.</p>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="flex flex-col sm:flex-row gap-4">
                     <label class="flex items-center gap-2 text-sm text-gray-700">
                         <input type="checkbox" wire:model="is_active" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
@@ -108,14 +135,21 @@
     </div>
     @endif
 
+    <livewire:master-data-import-panel type="products" />
+
     <div class="bg-white rounded-lg shadow overflow-hidden">
-        <div class="px-5 py-4 border-b border-gray-200 flex justify-between items-center">
+        <div class="px-5 py-4 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <input type="text" wire:model.live.debounce.300ms="search" placeholder="Cari nama, SKU, atau barcode..." class="border-gray-300 rounded-md shadow-sm text-sm w-full sm:w-80 focus:border-blue-500 focus:ring-blue-500">
+            <label class="flex items-center gap-2 text-xs text-gray-600">
+                Salinan label
+                <input type="number" min="1" max="50" wire:model="labelCopies" class="w-16 border-gray-300 rounded-md shadow-sm text-xs focus:border-blue-500 focus:ring-blue-500">
+            </label>
         </div>
         <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
+                    <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Gambar</th>
                     <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
                     <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nama Produk</th>
                     <th class="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kategori</th>
@@ -129,6 +163,13 @@
             <tbody class="bg-white divide-y divide-gray-200">
                 @forelse($products as $product)
                 <tr class="hover:bg-gray-50 {{ $product->is_active ? '' : 'opacity-50' }}">
+                    <td class="px-5 py-3">
+                        @if($product->image_path)
+                            <img src="{{ Storage::disk('public')->url($product->image_path) }}" alt="{{ $product->name }}" class="w-10 h-10 rounded object-cover border border-gray-200">
+                        @else
+                            <span class="inline-flex w-10 h-10 rounded bg-gray-100 items-center justify-center text-[10px] text-gray-400">-</span>
+                        @endif
+                    </td>
                     <td class="px-5 py-3 text-sm font-mono text-gray-700">{{ $product->sku }}</td>
                     <td class="px-5 py-3 text-sm text-gray-900 font-medium">{{ $product->name }}</td>
                     <td class="px-5 py-3 text-sm text-gray-600">{{ $product->category->name ?? '-' }}</td>
@@ -146,14 +187,17 @@
                             <span class="text-gray-400 text-xs">-</span>
                         @endif
                     </td>
-                    <td class="px-5 py-3 text-sm text-right space-x-2 whitespace-nowrap">
+                    <td class="px-5 py-3 text-right space-x-2 whitespace-nowrap">
+                        @if($product->barcode)
+                            <button wire:click="printLabel({{ $product->id }})" class="text-gray-700 hover:text-gray-900 text-xs font-medium" title="Cetak label barcode (PDF)">Cetak Label</button>
+                        @endif
                         <button wire:click="openEdit({{ $product->id }})" class="text-blue-600 hover:text-blue-800 text-xs font-medium">Edit</button>
                         <button wire:click="delete({{ $product->id }})" wire:confirm="Yakin hapus produk ini (soft delete)?" class="text-red-600 hover:text-red-800 text-xs font-medium">Hapus</button>
                     </td>
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="8" class="px-5 py-8 text-center text-gray-400 text-sm">Tidak ada data produk ditemukan.</td>
+                    <td colspan="9" class="px-5 py-8 text-center text-gray-400 text-sm">Tidak ada data produk ditemukan.</td>
                 </tr>
                 @endforelse
             </tbody>

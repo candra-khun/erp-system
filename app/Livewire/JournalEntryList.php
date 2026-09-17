@@ -65,8 +65,10 @@ class JournalEntryList extends Component
     public function render(): View
     {
         $query = JournalEntry::with('lines.account')
-            ->when($this->search, fn ($q) => $q->where('journal_number', 'like', "%{$this->search}%")
-                ->orWhere('description', 'like', "%{$this->search}%"))
+            ->when($this->search, fn ($q) => $q->where(function ($sub) {
+                $sub->where('journal_number', 'like', "%{$this->search}%")
+                    ->orWhere('description', 'like', "%{$this->search}%");
+            }))
             ->when($this->statusFilter === 'posted', fn ($q) => $q->where('is_posted', true))
             ->when($this->statusFilter === 'draft', fn ($q) => $q->where('is_posted', false))
             ->when($this->dateFrom, fn ($q) => $q->whereDate('journal_date', '>=', $this->dateFrom))

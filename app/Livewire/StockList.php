@@ -1,9 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Livewire;
 
+use App\Livewire\Concerns\InteractsWithWarehouseAccess;
 use App\Models\Stock;
-use App\Models\Warehouse;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -11,7 +13,7 @@ use Livewire\WithPagination;
 #[Layout('components.layouts.erp')]
 class StockList extends Component
 {
-    use WithPagination;
+    use InteractsWithWarehouseAccess, WithPagination;
 
     public string $search = '';
 
@@ -29,11 +31,16 @@ class StockList extends Component
 
     public function render()
     {
-        $warehouses = Warehouse::orderBy('name')->get();
+        // Reset filter gudang bila di luar scope akses user (via query string)
+        $warehouseFilter = $this->clampWarehouseFilter($this->warehouseFilter);
+        $this->warehouseFilter = $warehouseFilter;
+
+        $warehouses = $this->accessibleWarehouseOptions();
 
         $stocks = Stock::query()
             ->with(['product', 'warehouse'])
-            ->when($this->warehouseFilter, fn ($q) => $q->where('warehouse_id', $this->warehouseFilter))
+            ->when($warehouseFilter !== '', fn ($q) => $q->where('warehouse_id', (int) $warehouseFilter))
+            ->when($this->accessibleWarehouseIds() !== null, fn ($q) => $q->whereIn('warehouse_id', $this->accessibleWarehouseIds()))
             ->when($this->search, fn ($q) => $q->whereHas('product', fn ($pq) => $pq->where('name', 'like', "%{$this->search}%")))
             ->latest()
             ->paginate(10);

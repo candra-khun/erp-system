@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Support\Facades\Session;
 use Livewire\Attributes\Layout;
@@ -29,6 +30,9 @@ class WarehouseList extends Component
     public string $address = '';
 
     public bool $is_active = true;
+
+    /** @var list<int> */
+    public array $userIds = [];
 
     protected function rules(): array
     {
@@ -60,6 +64,7 @@ class WarehouseList extends Component
         $this->code = $warehouse->code ?? '';
         $this->address = $warehouse->address ?? '';
         $this->is_active = (bool) $warehouse->is_active;
+        $this->userIds = $warehouse->users()->pluck('users.id')->map(fn ($v) => (int) $v)->all();
         $this->isEdit = true;
         $this->showModal = true;
     }
@@ -76,10 +81,15 @@ class WarehouseList extends Component
         ];
 
         if ($this->isEdit && $this->warehouseId) {
-            Warehouse::findOrFail($this->warehouseId)->update($data);
+            $warehouse = Warehouse::findOrFail($this->warehouseId);
+            $warehouse->update($data);
+            $warehouse->users()->sync($this->userIds);
             Session::flash('message', 'Gudang berhasil diperbarui.');
         } else {
-            Warehouse::create($data);
+            $warehouse = Warehouse::create($data);
+            if ($this->userIds !== []) {
+                $warehouse->users()->sync($this->userIds);
+            }
             Session::flash('message', 'Gudang berhasil ditambahkan.');
         }
 
@@ -101,17 +111,24 @@ class WarehouseList extends Component
         $this->code = '';
         $this->address = '';
         $this->is_active = true;
+        $this->userIds = [];
         $this->resetValidation();
     }
 
     public function render()
     {
         $warehouses = Warehouse::query()
+            ->withCount('users')
             ->when($this->search, fn ($q) => $q->where('name', 'like', "%{$this->search}%")
                 ->orWhere('code', 'like', "%{$this->search}%"))
             ->latest()
             ->paginate(10);
 
-        return view('livewire.warehouse-list', compact('warehouses'));
+        // Opsi user untuk assignment cabang (semua user non-super_admin)
+        $assignableUsers = User::whereDoesntHave('roles', fn ($q) => $q->where('name', 'super_admin'))
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return view('livewire.warehouse-list', compact('warehouses', 'assignableUsers'));
     }
 }

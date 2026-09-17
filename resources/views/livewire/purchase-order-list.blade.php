@@ -99,18 +99,28 @@
             <form wire:submit="submitReceive" class="space-y-4">
                 <div class="space-y-2">
                     @foreach($receiveItems as $index => $ri)
-                    <div class="flex items-center justify-between gap-3 bg-gray-50 rounded-lg px-3 py-2">
-                        <div class="flex-1 min-w-0">
-                            <p class="text-sm font-medium text-gray-800 truncate">{{ $ri['product_name'] }}</p>
-                            <p class="text-xs text-gray-500">Dipesan: {{ $ri['ordered'] }} · Sudah diterima: {{ $ri['received'] }}</p>
+                    <div class="bg-gray-50 rounded-lg px-3 py-2 space-y-2">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-gray-800 truncate">{{ $ri['product_name'] }}</p>
+                                <p class="text-xs text-gray-500">Dipesan: {{ $ri['ordered'] }} · Sudah diterima: {{ $ri['received'] }}</p>
+                            </div>
+                            <input type="number" min="0" max="{{ $ri['ordered'] - $ri['received'] }}" step="0.01"
+                                   wire:model="receiveItems.{{ $index }}.quantity"
+                                   class="w-24 border-gray-300 rounded-md shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
                         </div>
-                        <input type="number" min="0" max="{{ $ri['ordered'] - $ri['received'] }}" step="0.01"
-                               wire:model="receiveItems.{{ $index }}.quantity"
-                               class="w-24 border-gray-300 rounded-md shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
+                        <div class="grid grid-cols-2 gap-2">
+                            <input type="text" wire:model="receiveItems.{{ $index }}.batch_number" placeholder="No. Batch (opsional)"
+                                   class="w-full border-gray-300 rounded-md shadow-sm text-xs focus:border-blue-500 focus:ring-blue-500">
+                            <input type="date" wire:model="receiveItems.{{ $index }}.expiry_date" title="Tanggal kedaluwarsa"
+                                   class="w-full border-gray-300 rounded-md shadow-sm text-xs focus:border-blue-500 focus:ring-blue-500">
+                        </div>
+                        @error("receiveItems.{$index}.batch_number") @error("receiveItems.{$index}.expiry_date") <p class="text-red-500 text-xs">Batch/kedaluwarsa tidak valid.</p> @enderror @enderror
                     </div>
                     @endforeach
                 </div>
                 @error('receiveItems') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
+                @error('receiveItems.*') <p class="text-red-500 text-xs">Periksa kembali jumlah yang diterima.</p> @enderror
 
                 <div class="flex justify-end gap-3 pt-4 border-t">
                     <button type="button" wire:click="$set('showReceiveForm', false)" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Batal</button>
@@ -153,6 +163,7 @@
                         @php
                             $statusColors = [
                                 'draft' => 'bg-gray-100 text-gray-800',
+                                'pending_level2' => 'bg-purple-100 text-purple-800',
                                 'submitted' => 'bg-yellow-100 text-yellow-800',
                                 'approved' => 'bg-blue-100 text-blue-800',
                                 'sent_to_supplier' => 'bg-indigo-100 text-indigo-800',
@@ -170,6 +181,8 @@
                         @if(in_array($po->status, ['draft', 'submitted']))
                             <button wire:click="approve({{ $po->id }})" wire:confirm="Setujui PO ini?" class="text-green-600 hover:text-green-800 text-xs font-medium">Setujui</button>
                             <button wire:click="delete({{ $po->id }})" wire:confirm="Hapus PO ini?" class="text-red-600 hover:text-red-800 text-xs font-medium">Hapus</button>
+                        @elseif($po->status === 'pending_level2')
+                            <button wire:click="approve({{ $po->id }})" wire:confirm="Setujui PO ini (approval level 2)? Harus oleh user yang berbeda dari level 1." class="text-purple-600 hover:text-purple-800 text-xs font-medium">Setujui Lv.2</button>
                         @elseif($po->status === 'approved')
                             <button wire:click="sendToSupplier({{ $po->id }})" class="text-indigo-600 hover:text-indigo-800 text-xs font-medium">Kirim ke Supplier</button>
                         @endif

@@ -14,7 +14,7 @@
     <div class="fixed inset-0 bg-black/50 flex items-start justify-center z-50 overflow-y-auto py-8">
         <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4 p-6">
             <h2 class="text-lg font-bold text-gray-800 mb-4">Buat Stock Opname Baru</h2>
-            <form wire:submit="save" class="space-y-4">
+            <form wire:submit="store" class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Gudang</label>
                     <select wire:model.live="warehouse_id" class="w-full border-gray-300 rounded-md shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
@@ -39,7 +39,7 @@
                         <div class="flex items-center gap-3 p-3">
                             <div class="flex-1">
                                 <p class="text-sm font-medium text-gray-900">{{ $item['product_name'] }}</p>
-                                <p class="text-xs text-gray-500">SKU: {{ $item['sku'] }} | Stok Sistem: {{ number_format((float) $item['system_qty'], 0, ',', '.') }}</p>
+                                <p class="text-xs text-gray-500">SKU: {{ $item['sku'] }} | Stok Sistem: {{ number_format((float) $item['system_qty'], 0, ',', '.') }} {{ $item['unit_symbol'] }}</p>
                             </div>
                             <input type="hidden" wire:model="items.{{ $index }}.product_id">
                             <input type="number" wire:model="items.{{ $index }}.physical_qty" min="0" step="0.01" placeholder="Qty Fisik" class="w-32 border-gray-300 rounded-md shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">

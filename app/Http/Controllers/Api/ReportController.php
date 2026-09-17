@@ -2,13 +2,17 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Api\Concerns\ScopesWarehouseAccess;
 use App\Http\Controllers\Controller;
+use App\Rules\WarehouseAccessible;
 use App\Services\ReportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ReportController extends Controller
 {
+    use ScopesWarehouseAccess;
+
     public function __construct(private ReportService $reportService) {}
 
     public function salesByProduct(Request $request): JsonResponse
@@ -16,13 +20,13 @@ class ReportController extends Controller
         $validated = $request->validate([
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
-            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id', new WarehouseAccessible],
         ]);
 
         $data = $this->reportService->getSalesByProduct(
             $validated['start_date'],
             $validated['end_date'],
-            $validated['warehouse_id'] ?? null,
+            $this->resolveWarehouseScope($validated['warehouse_id'] ?? null),
         );
 
         return response()->json(['data' => $data]);
@@ -38,6 +42,7 @@ class ReportController extends Controller
         $data = $this->reportService->getSalesByWarehouse(
             $validated['start_date'],
             $validated['end_date'],
+            $this->resolveWarehouseScope(null),
         );
 
         return response()->json(['data' => $data]);
@@ -48,13 +53,13 @@ class ReportController extends Controller
         $validated = $request->validate([
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
-            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id', new WarehouseAccessible],
         ]);
 
         $data = $this->reportService->getSalesByCashier(
             $validated['start_date'],
             $validated['end_date'],
-            $validated['warehouse_id'] ?? null,
+            $this->resolveWarehouseScope($validated['warehouse_id'] ?? null),
         );
 
         return response()->json(['data' => $data]);
@@ -76,13 +81,13 @@ class ReportController extends Controller
         $validated = $request->validate([
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
-            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id', new WarehouseAccessible],
         ]);
 
         $data = $this->reportService->getProfitMarginReport(
             $validated['start_date'],
             $validated['end_date'],
-            $validated['warehouse_id'] ?? null,
+            $this->resolveWarehouseScope($validated['warehouse_id'] ?? null),
         );
 
         return response()->json(['data' => $data]);
@@ -92,7 +97,7 @@ class ReportController extends Controller
     {
         $validated = $request->validate([
             'date' => 'required|date',
-            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
+            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id', new WarehouseAccessible],
         ]);
 
         $summary = $this->reportService->refreshDailySummary(

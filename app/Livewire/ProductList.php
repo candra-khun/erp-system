@@ -7,15 +7,17 @@ namespace App\Livewire;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\ProductUnit;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 
 #[Layout('components.layouts.erp', ['title' => 'Produk'])]
 class ProductList extends Component
 {
-    use WithPagination;
+    use WithFileUploads, WithPagination;
 
     #[Url]
     public string $search = '';
@@ -48,6 +50,12 @@ class ProductList extends Component
 
     public bool $reorder_alert_enabled = false;
 
+    public $image = null;
+
+    public ?string $existingImage = null;
+
+    public int $labelCopies = 1;
+
     public ?int $previewId = null;
 
     public function updatingSearch(): void
@@ -57,7 +65,7 @@ class ProductList extends Component
 
     public function openCreate(): void
     {
-        $this->reset(['editId', 'sku', 'name', 'product_category_id', 'base_unit_id', 'barcode', 'description', 'purchase_price', 'selling_price', 'min_stock', 'reorder_point', 'reorder_alert_enabled']);
+        $this->reset(['editId', 'sku', 'name', 'product_category_id', 'base_unit_id', 'barcode', 'description', 'purchase_price', 'selling_price', 'min_stock', 'reorder_point', 'reorder_alert_enabled', 'image', 'existingImage']);
         $this->is_active = true;
         $this->resetErrorBag();
         $this->showForm = true;
@@ -76,12 +84,32 @@ class ProductList extends Component
         $this->description = (string) $product->description;
         $this->purchase_price = (string) $product->purchase_price;
         $this->selling_price = (string) $product->selling_price;
-        $this->min_stock = (string) $product->min_stock;
-        $this->reorder_point = (string) $product->reorder_point;
+        $this->min_stock = (string) ($product->min_stock ?? 0);
+        $this->reorder_point = (string) ($product->reorder_point ?? 0);
         $this->is_active = (bool) $product->is_active;
         $this->reorder_alert_enabled = (bool) $product->reorder_alert_enabled;
+        $this->image = null;
+        $this->existingImage = $product->image_path;
         $this->resetErrorBag();
         $this->showForm = true;
+    }
+
+    public function updatedImage(): void
+    {
+        $this->validateOnly('image', [
+            'image' => 'nullable|image|max:2048',
+        ]);
+    }
+
+    public function removeImage(): void
+    {
+        if ($this->editId && $this->existingImage) {
+            Storage::disk('public')->delete($this->existingImage);
+            Product::findOrFail($this->editId)->update(['image_path' => null]);
+        }
+
+        $this->image = null;
+        $this->existingImage = null;
     }
 
     public function save(): void
@@ -99,6 +127,7 @@ class ProductList extends Component
             'reorder_point' => 'required|numeric|min:0',
             'is_active' => 'boolean',
             'reorder_alert_enabled' => 'boolean',
+            'image' => 'nullable|image|max:2048',
         ];
 
         if (! $this->editId && $this->barcode === '') {
@@ -122,8 +151,18 @@ class ProductList extends Component
             'reorder_alert_enabled' => $validated['reorder_alert_enabled'],
         ];
 
+        if ($this->image) {
+            $data['image_path'] = $this->image->store('products', 'public');
+        }
+
         if ($this->editId) {
-            Product::findOrFail($this->editId)->update($data);
+            $product = Product::findOrFail($this->editId);
+
+            if ($this->image && $product->image_path) {
+                Storage::disk('public')->delete($product->image_path);
+            }
+
+            $product->update($data);
             session()->flash('success', 'Produk berhasil diperbarui.');
         } else {
             Product::create($data);
@@ -150,6 +189,19 @@ class ProductList extends Component
     public function previewBarcode(int $id): void
     {
         $this->previewId = $this->previewId === $id ? null : $id;
+    }
+
+    public function printLabel(int $id): void
+    {
+        $product = Product::findOrFail($id);
+
+        if (empty($product->barcode)) {
+            session()->flash('error', 'Produk belum memiliki barcode. Isi barcode terlebih dahulu.');
+
+            return;
+        }
+
+        $this->redirectRoute('pdf.product-label', ['id' => $product->id, 'copies' => $this->labelCopies], navigate: false);
     }
 
     public function render()

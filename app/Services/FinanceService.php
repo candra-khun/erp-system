@@ -21,63 +21,70 @@ class FinanceService
     public function __construct(private readonly JournalService $journalService) {}
 
     /**
-     * Record POS sale cash-in + sales journal (revenue & COGS) for a completed
-     * sales transaction. Called inside the POS checkout DB transaction.
+     * Record POS sale settlement: cash/bank transactions + sales journal
+     * (revenue & COGS) for a completed sales transaction. Called inside the
+     * POS checkout DB transaction.
      *
-     * @throws \RuntimeException when the journal cannot be balanced
+     * Non-cash settlements (transfer/card) are posted to the bank account
+     * instead of the cash drawer, and split payments produce one settlement
+     * line per method (PRD 4.4).
+     *
+     * @param  array<int, array{method: string, amount: float}>  $payments  Net settled amount per method, summing to the transaction total
      */
-    public function recordPosSaleCash(SalesTransaction $transaction, float $paidAmount, ?int $userId = null): void
+    public function recordPosSale(SalesTransaction $transaction, array $payments, ?int $userId = null): void
     {
-        // Kas masuk (uang diterima, kembalian sudah net)
-        CashTransaction::create([
-            'transaction_number' => $this->generateCashNumber(),
-            'type' => 'in',
-            'category' => 'sales',
-            'amount' => max(0, $paidAmount),
-            'transaction_date' => now()->toDateString(),
-            'description' => 'Penjualan POS '.$transaction->transaction_number,
-            'warehouse_id' => $transaction->warehouse_id,
-            'payment_method' => $transaction->payment_method,
-            'created_by' => $userId,
-        ]);
+        $payments = array_values(array_filter(
+            $payments,
+            static fn (array $payment): bool => (float) $payment['amount'] > 0.001,
+        ));
 
-        $cashAccount = Account::where('code', '1110')->first();      // Kas Toko
+        if ($payments === []) {
+            return;
+        }
+
+        foreach ($payments as $payment) {
+            CashTransaction::create([
+                'transaction_number' => $this->generateCashNumber(),
+                'type' => 'in',
+                'category' => 'sales',
+                'amount' => (float) $payment['amount'],
+                'transaction_date' => now()->toDateString(),
+                'description' => 'Penjualan POS '.$transaction->transaction_number,
+                'warehouse_id' => $transaction->warehouse_id,
+                'payment_method' => $payment['method'],
+                'created_by' => $userId,
+            ]);
+        }
+
         $revenueAccount = Account::where('code', '4110')->first();   // Penjualan Tunai
         $inventoryAccount = Account::where('code', '1310')->first(); // Persediaan
         $cogsAccount = Account::where('code', '5100')->first();      // HPP
 
-        if (! $cashAccount || ! $revenueAccount) {
+        if (! $revenueAccount) {
             return; // CoA belum di-seed — kas tetap tercatat, jurnal dilewati
         }
 
-        $total = (float) $transaction->total_amount;
+        $settlements = [];
+        foreach ($payments as $payment) {
+            $account = $this->settlementAccount($payment['method']);
 
-        // Hitung COGS per item dari moving-average unit cost GRN (fallback: harga beli master)
-        $cogs = 0.0;
-        if ($inventoryAccount && $cogsAccount) {
-            foreach ($transaction->items as $item) {
-                $avgUnitCost = (float) DB::table('goods_receipt_items as gri')
-                    ->join('goods_receipts as gr', 'gri.goods_receipt_id', '=', 'gr.id')
-                    ->join('purchase_order_items as poi', 'gri.purchase_order_item_id', '=', 'poi.id')
-                    ->where('gri.product_id', $item->product_id)
-                    ->avg('poi.unit_price');
-
-                if ($avgUnitCost <= 0) {
-                    $avgUnitCost = (float) DB::table('products')
-                        ->where('id', $item->product_id)
-                        ->value('purchase_price');
-                }
-
-                $cogs += $avgUnitCost * (float) $item->quantity;
+            if (! $account) {
+                return; // akun penampung belum ada — jurnal dilewati agar tetap balance
             }
+
+            $settlements[] = [
+                'account_id' => $account->id,
+                'amount' => (float) $payment['amount'],
+                'label' => 'Penerimaan '.$payment['method'].' penjualan POS',
+            ];
         }
 
+        $cogs = ($inventoryAccount && $cogsAccount) ? $this->calculatePosCogs($transaction) : 0.0;
+
         try {
-            $this->journalService->createSalesJournal(
-                referenceType: 'sales_transaction',
-                referenceId: (int) $transaction->id,
-                revenueAmount: $total,
-                receivableOrCashAccountId: $cashAccount->id,
+            $this->journalService->createPosSalesJournal(
+                salesTransactionId: (int) $transaction->id,
+                settlements: $settlements,
                 revenueAccountId: $revenueAccount->id,
                 cogsAmount: $cogs > 0 ? $cogs : null,
                 cogsAccountId: $cogsAccount?->id,
@@ -88,6 +95,45 @@ class FinanceService
         } catch (\RuntimeException) {
             // Journal unbalanced — skip silently, cash & stock stay consistent.
         }
+    }
+
+    /**
+     * Akun penampung kas/bank untuk sebuah metode pembayaran POS.
+     */
+    private function settlementAccount(string $method): ?Account
+    {
+        $code = match ($method) {
+            'transfer', 'card' => '1120', // Bank BCA — settlement transfer & kartu
+            default => '1110',            // Kas Toko
+        };
+
+        return Account::where('code', $code)->first();
+    }
+
+    /**
+     * Hitung COGS per item dari moving-average unit cost GRN (fallback: harga beli master).
+     */
+    private function calculatePosCogs(SalesTransaction $transaction): float
+    {
+        $cogs = 0.0;
+
+        foreach ($transaction->items as $item) {
+            $avgUnitCost = (float) DB::table('goods_receipt_items as gri')
+                ->join('goods_receipts as gr', 'gri.goods_receipt_id', '=', 'gr.id')
+                ->join('purchase_order_items as poi', 'gri.purchase_order_item_id', '=', 'poi.id')
+                ->where('gri.product_id', $item->product_id)
+                ->avg('poi.unit_price');
+
+            if ($avgUnitCost <= 0) {
+                $avgUnitCost = (float) DB::table('products')
+                    ->where('id', $item->product_id)
+                    ->value('purchase_price');
+            }
+
+            $cogs += $avgUnitCost * (float) $item->quantity;
+        }
+
+        return $cogs;
     }
 
     /**

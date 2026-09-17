@@ -20,8 +20,10 @@ class ReportService
 {
     /**
      * Get dashboard summary statistics.
+     *
+     * @param  list<int>|null  $warehouseIds  Batasi ke cabang dalam scope user (null = semua).
      */
-    public function getDashboardStats(?int $warehouseId = null): array
+    public function getDashboardStats(?array $warehouseIds = null): array
     {
         $today = now()->toDateString();
         $thisMonth = now()->startOfMonth()->toDateString();
@@ -33,13 +35,13 @@ class ReportService
         $cashInQuery = CashTransaction::where('type', 'in');
         $cashOutQuery = CashTransaction::where('type', 'out');
 
-        if ($warehouseId) {
-            $salesQuery->where('warehouse_id', $warehouseId);
-            $purchaseQuery->where('warehouse_id', $warehouseId);
-            $apQuery->where('warehouse_id', $warehouseId);
-            $arQuery->where('warehouse_id', $warehouseId);
-            $cashInQuery->where('warehouse_id', $warehouseId);
-            $cashOutQuery->where('warehouse_id', $warehouseId);
+        if ($warehouseIds !== null) {
+            $salesQuery->whereIn('warehouse_id', $warehouseIds);
+            $purchaseQuery->whereIn('warehouse_id', $warehouseIds);
+            $apQuery->whereIn('warehouse_id', $warehouseIds);
+            $arQuery->whereIn('warehouse_id', $warehouseIds);
+            $cashInQuery->whereIn('warehouse_id', $warehouseIds);
+            $cashOutQuery->whereIn('warehouse_id', $warehouseIds);
         }
 
         return [
@@ -53,7 +55,7 @@ class ReportService
             'low_stock_count' => Stock::join('products', 'stocks.product_id', '=', 'products.id')
                 ->whereColumn('stocks.quantity', '<=', 'products.reorder_point')
                 ->where('products.reorder_alert_enabled', true)
-                ->when($warehouseId, fn ($q) => $q->where('stocks.warehouse_id', $warehouseId))
+                ->when($warehouseIds !== null, fn ($q) => $q->whereIn('stocks.warehouse_id', $warehouseIds))
                 ->distinct('stocks.product_id')
                 ->count('stocks.product_id'),
             'total_products' => Product::where('is_active', true)->count(),
@@ -110,8 +112,10 @@ class ReportService
 
     /**
      * Get sales report by product for a date range.
+     *
+     * @param  list<int>|null  $warehouseIds  Batasi ke cabang dalam scope user (null = semua).
      */
-    public function getSalesByProduct(string $startDate, string $endDate, ?int $warehouseId = null): array
+    public function getSalesByProduct(string $startDate, string $endDate, ?array $warehouseIds = null): array
     {
         $query = DB::table('sales_transaction_items as sti')
             ->join('sales_transactions as st', 'sti.sales_transaction_id', '=', 'st.id')
@@ -119,8 +123,8 @@ class ReportService
             ->whereBetween('st.created_at', [$startDate.' 00:00:00', $endDate.' 23:59:59'])
             ->where('st.status', 'completed');
 
-        if ($warehouseId) {
-            $query->where('st.warehouse_id', $warehouseId);
+        if ($warehouseIds !== null) {
+            $query->whereIn('st.warehouse_id', $warehouseIds);
         }
 
         return $query->selectRaw('p.id, p.sku, p.name, SUM(sti.quantity) as total_qty, SUM(sti.subtotal) as total_revenue')
@@ -133,15 +137,17 @@ class ReportService
     /**
      * Get sales report grouped by warehouse (branch) for a date range.
      *
+     * @param  list<int>|null  $warehouseIds  Batasi ke cabang dalam scope user (null = semua).
      * @return array<int, object{warehouse_id: int, warehouse: string, transaction_count: int, total_revenue: float}>
      */
-    public function getSalesByWarehouse(string $startDate, string $endDate): array
+    public function getSalesByWarehouse(string $startDate, string $endDate, ?array $warehouseIds = null): array
     {
         return DB::table('sales_transactions as st')
             ->join('warehouses as w', 'st.warehouse_id', '=', 'w.id')
             ->whereBetween('st.created_at', [$startDate.' 00:00:00', $endDate.' 23:59:59'])
             ->where('st.status', 'completed')
             ->whereNull('st.deleted_at')
+            ->when($warehouseIds !== null, fn ($q) => $q->whereIn('st.warehouse_id', $warehouseIds))
             ->selectRaw('w.id as warehouse_id, w.name as warehouse, COUNT(st.id) as transaction_count, SUM(st.total_amount) as total_revenue')
             ->groupBy('w.id', 'w.name')
             ->orderByDesc('total_revenue')
@@ -152,9 +158,10 @@ class ReportService
     /**
      * Get sales report grouped by cashier (sales person) for a date range.
      *
+     * @param  list<int>|null  $warehouseIds  Batasi ke cabang dalam scope user (null = semua).
      * @return array<int, object{cashier_id: int, cashier: string, transaction_count: int, total_revenue: float}>
      */
-    public function getSalesByCashier(string $startDate, string $endDate, ?int $warehouseId = null): array
+    public function getSalesByCashier(string $startDate, string $endDate, ?array $warehouseIds = null): array
     {
         $query = DB::table('sales_transactions as st')
             ->join('users as u', 'st.cashier_id', '=', 'u.id')
@@ -162,8 +169,8 @@ class ReportService
             ->where('st.status', 'completed')
             ->whereNull('st.deleted_at');
 
-        if ($warehouseId) {
-            $query->where('st.warehouse_id', $warehouseId);
+        if ($warehouseIds !== null) {
+            $query->whereIn('st.warehouse_id', $warehouseIds);
         }
 
         return $query->selectRaw('u.id as cashier_id, u.name as cashier, COUNT(st.id) as transaction_count, SUM(st.total_amount) as total_revenue')
@@ -175,10 +182,12 @@ class ReportService
 
     /**
      * Get profit margin report per product.
+     *
+     * @param  list<int>|null  $warehouseIds  Batasi ke cabang dalam scope user (null = semua).
      */
-    public function getProfitMarginReport(string $startDate, string $endDate, ?int $warehouseId = null): array
+    public function getProfitMarginReport(string $startDate, string $endDate, ?array $warehouseIds = null): array
     {
-        $sales = $this->getSalesByProduct($startDate, $endDate, $warehouseId);
+        $sales = $this->getSalesByProduct($startDate, $endDate, $warehouseIds);
 
         foreach ($sales as &$item) {
             $avgCost = DB::table('goods_receipt_items as gri')
@@ -187,8 +196,8 @@ class ReportService
                 ->where('gri.product_id', $item->id)
                 ->whereBetween('gr.receipt_date', [$startDate, $endDate]);
 
-            if ($warehouseId) {
-                $avgCost->where('gr.warehouse_id', $warehouseId);
+            if ($warehouseIds !== null) {
+                $avgCost->whereIn('gr.warehouse_id', $warehouseIds);
             }
 
             $avgUnitCost = $avgCost->avg('poi.unit_price') ?? 0;

@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\InteractsWithWarehouseAccess;
 use App\Models\Product;
 use App\Models\StockMovement;
-use App\Models\Warehouse;
 use Livewire\Component;
 use Livewire\WithPagination;
 
 class StockCard extends Component
 {
-    use WithPagination;
+    use InteractsWithWarehouseAccess, WithPagination;
 
     public string $search = '';
 
@@ -35,9 +35,12 @@ class StockCard extends Component
             ->orderBy('name')
             ->get(['id', 'sku', 'name']);
 
-        $warehouses = Warehouse::orderBy('name')->get(['id', 'name']);
+        $warehouses = $this->accessibleWarehouseOptions();
 
         $movements = StockMovement::with(['product', 'warehouse', 'creator'])
+            ->when($this->accessibleWarehouseIds() !== null, function ($query): void {
+                $query->whereIn('warehouse_id', $this->accessibleWarehouseIds());
+            })
             ->when($this->search, function ($query): void {
                 $query->whereHas('product', function ($q): void {
                     $q->where('name', 'like', "%{$this->search}%")

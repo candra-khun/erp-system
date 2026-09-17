@@ -8,6 +8,7 @@ enum PurchaseOrderStatus: string
 {
     case Draft = 'draft';
     case Submitted = 'submitted';
+    case PendingLevel2 = 'pending_level2';
     case Approved = 'approved';
     case SentToSupplier = 'sent_to_supplier';
     case PartialReceived = 'partial_received';
@@ -18,8 +19,9 @@ enum PurchaseOrderStatus: string
     public function label(): string
     {
         return match ($this) {
-            self::Draft => 'Draf',
+            self::Draft => 'Draft',
             self::Submitted => 'Diajukan',
+            self::PendingLevel2 => 'Menunggu Approval 2',
             self::Approved => 'Disetujui',
             self::SentToSupplier => 'Dikirim ke Supplier',
             self::PartialReceived => 'Diterima Sebagian',

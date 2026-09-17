@@ -4,7 +4,13 @@ namespace App\Livewire;
 
 use App\Enums\CustomerType;
 use App\Models\Customer;
+use App\Models\CustomerCommunication;
+use App\Models\CustomerLoyaltyProfile;
+use App\Models\LoyaltyPoint;
+use App\Services\LoyaltyService;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\On;
 use Livewire\Component;
@@ -98,6 +104,104 @@ class CustomerList extends Component
     {
         Customer::findOrFail($id)->delete();
         Session::flash('message', 'Customer berhasil dihapus.');
+    }
+
+    // === Loyalitas & Komunikasi (Fase 3 — PRD 4.6) ===
+
+    public bool $showLoyalty = false;
+
+    public ?int $loyaltyCustomerId = null;
+
+    public int $redeemPoints = 0;
+
+    public ?string $redeemNotes = null;
+
+    public string $commChannel = 'phone';
+
+    public string $commSubject = '';
+
+    public string $commSummary = '';
+
+    public ?string $commFollowUpDate = null;
+
+    public function openLoyalty(int $id): void
+    {
+        $this->loyaltyCustomerId = $id;
+        $this->showLoyalty = true;
+        $this->resetValidation();
+        $this->redeemPoints = 0;
+        $this->redeemNotes = null;
+    }
+
+    #[Computed]
+    public function loyaltyCustomer(): ?Customer
+    {
+        return $this->loyaltyCustomerId ? Customer::find($this->loyaltyCustomerId) : null;
+    }
+
+    #[Computed]
+    public function loyaltyProfile()
+    {
+        return $this->loyaltyCustomerId
+            ? CustomerLoyaltyProfile::firstOrCreate(
+                ['customer_id' => $this->loyaltyCustomerId],
+                ['points_balance' => 0, 'lifetime_points' => 0],
+            )
+            : null;
+    }
+
+    #[Computed]
+    public function loyaltyLogs()
+    {
+        return $this->loyaltyCustomerId
+            ? LoyaltyPoint::where('customer_id', $this->loyaltyCustomerId)->latest()->limit(10)->get()
+            : collect();
+    }
+
+    #[Computed]
+    public function communications()
+    {
+        return $this->loyaltyCustomerId
+            ? CustomerCommunication::where('customer_id', $this->loyaltyCustomerId)->with('creator')->latest()->limit(10)->get()
+            : collect();
+    }
+
+    public function redeem(LoyaltyService $service): void
+    {
+        $this->validate(['redeemPoints' => 'required|integer|min:1']);
+
+        try {
+            $service->redeem($this->loyaltyCustomerId, $this->redeemPoints, 'manual', null, (int) Auth::id(), $this->redeemNotes);
+            Session::flash('message', 'Poin berhasil ditukarkan.');
+            $this->redeemPoints = 0;
+            $this->redeemNotes = null;
+        } catch (\RuntimeException $e) {
+            $this->addError('redeemPoints', $e->getMessage());
+        }
+    }
+
+    public function addCommunication(): void
+    {
+        $this->validate([
+            'commChannel' => 'required|in:phone,whatsapp,email,visit,other',
+            'commSummary' => 'required|string|max:2000',
+            'commSubject' => 'nullable|string|max:200',
+            'commFollowUpDate' => 'nullable|date',
+        ]);
+
+        CustomerCommunication::create([
+            'customer_id' => $this->loyaltyCustomerId,
+            'channel' => $this->commChannel,
+            'subject' => $this->commSubject,
+            'summary' => $this->commSummary,
+            'follow_up_date' => $this->commFollowUpDate,
+            'created_by' => Auth::id(),
+        ]);
+
+        $this->commSummary = '';
+        $this->commSubject = '';
+        $this->commFollowUpDate = null;
+        Session::flash('message', 'Riwayat komunikasi dicatat.');
     }
 
     private function resetForm(): void

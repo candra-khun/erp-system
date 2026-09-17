@@ -63,6 +63,16 @@ class User extends Authenticatable
     }
 
     /**
+     * Cabang/gudang yang dapat dikelola user (PRD: Admin Cabang = 1 cabang).
+     *
+     * @return BelongsToMany<Warehouse>
+     */
+    public function warehouses(): BelongsToMany
+    {
+        return $this->belongsToMany(Warehouse::class, 'user_warehouse')->withTimestamps();
+    }
+
+    /**
      * Check if user has a specific role by name.
      */
     public function hasRole(string $roleName): bool

@@ -1,4 +1,4 @@
-<div class="flex h-[calc(100vh-4rem)]">
+<div class="flex h-[calc(100vh-7rem)] min-h-[28rem] -mt-6">
     <div class="flex-1 p-4 overflow-y-auto">
         <div class="mb-4">
             <h1 class="text-2xl font-bold text-gray-800">POS Terminal</h1>
@@ -48,7 +48,7 @@
         </div>
     </div>
 
-    <div class="w-96 bg-white shadow-lg flex flex-col border-l border-gray-200">
+    <div class="w-96 shrink-0 bg-white shadow-lg flex flex-col border-l border-gray-200 min-h-0">
         <div class="p-4 border-b flex items-center justify-between">
             <h2 class="text-xl font-bold text-gray-800">Keranjang</h2>
             <select wire:model.live="customer_id" class="text-xs border border-gray-300 rounded-md px-2 py-1">
@@ -68,17 +68,30 @@
                     <div class="flex justify-between items-start">
                         <div class="min-w-0">
                             <p class="font-medium text-gray-800 text-sm truncate">{{ $item['name'] }}</p>
-                            <p class="text-xs text-gray-400">{{ $item['sku'] }} · Rp {{ number_format($item['price'], 0, ',', '.') }}</p>
+                            <p class="text-xs text-gray-400">{{ $item['sku'] }} · Rp {{ number_format($item['price'], 0, ',', '.') }} / {{ $item['unit_symbol'] }}</p>
                         </div>
                         <button wire:click="removeFromCart({{ $index }})" class="text-red-400 hover:text-red-600 text-sm">&times;</button>
                     </div>
                     <div class="flex items-center justify-between mt-2">
-                        <div class="flex items-center border border-gray-200 rounded-lg">
-                            <button wire:click="updateQty({{ $index }}, {{ max(0, $item['qty'] - 1) }})" class="px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-l-lg">&minus;</button>
-                            <input type="number" min="1"
-                                   wire:change="updateQty({{ $index }}, $event.target.value)"
-                                   value="{{ $item['qty'] }}" class="w-12 text-center text-sm border-x border-gray-200 py-1">
-                            <button wire:click="updateQty({{ $index }}, {{ $item['qty'] + 1 }})" class="px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-r-lg">&plus;</button>
+                        <div class="flex items-center gap-2">
+                            <div class="flex items-center border border-gray-200 rounded-lg">
+                                <button wire:click="updateQty({{ $index }}, {{ max(0, $item['qty'] - 1) }})" class="px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-l-lg">&minus;</button>
+                                <input type="number" min="1"
+                                       wire:change="updateQty({{ $index }}, $event.target.value)"
+                                       value="{{ $item['qty'] }}" class="w-12 text-center text-sm border-x border-gray-200 py-1">
+                                <button wire:click="updateQty({{ $index }}, {{ $item['qty'] + 1 }})" class="px-2 py-1 text-gray-600 hover:bg-gray-50 rounded-r-lg">&plus;</button>
+                            </div>
+                            @if(($unitOptionsByProduct[$item['product_id']] ?? null) && count($unitOptionsByProduct[$item['product_id']]) > 1)
+                            <select wire:change="updateUnit({{ $index }}, $event.target.value)"
+                                    class="text-xs border border-gray-300 rounded-md px-1.5 py-1 focus:ring-blue-500 focus:border-blue-500"
+                                    title="Pilih satuan jual">
+                                @foreach($unitOptionsByProduct[$item['product_id']] as $unitOption)
+                                    <option value="{{ $unitOption->id }}" {{ (int) $item['unit_id'] === (int) $unitOption->id ? 'selected' : '' }}>
+                                        {{ $unitOption->symbol }}{{ $unitOption->is_base ? '' : ' (1 = '.rtrim(rtrim((string) $unitOption->conversion_factor, '0'), '.').' '.($unitOptionsByProduct[$item['product_id']]->first(fn ($u) => $u->id === $unitOption->base_unit_id)?->symbol ?? 'base').')' }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            @endif
                         </div>
                         <span class="text-sm font-semibold text-gray-800">Rp {{ number_format($item['price'] * $item['qty'], 0, ',', '.') }}</span>
                     </div>
@@ -112,17 +125,59 @@
                 @endforeach
             </div>
 
-            <div>
-                <label class="block text-xs text-gray-500 mb-1">Uang Bayar (Rp)</label>
-                <input type="number" min="0" wire:model.live.debounce.300ms="paid_amount" value="{{ $paid_amount }}"
-                       class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 {{ $errors->has('paid_amount') ? 'border-red-400' : 'border-gray-300' }}">
-                @error('paid_amount') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
-            </div>
+            @if($payment_method === 'cash')
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Uang Bayar (Rp)</label>
+                    <input type="number" min="0" wire:model.live.debounce.300ms="paid_amount" value="{{ $paid_amount }}"
+                           class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 {{ $errors->has('paid_amount') ? 'border-red-400' : 'border-gray-300' }}">
+                    @error('paid_amount') <p class="text-xs text-red-500 mt-1">{{ $message }}</p> @enderror
+                </div>
 
-            <div class="flex justify-between text-sm">
-                <span class="text-gray-500">Kembalian</span>
-                <span class="font-semibold text-green-600">Rp {{ number_format($this->change, 0, ',', '.') }}</span>
-            </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-500">Kembalian</span>
+                    <span class="font-semibold text-green-600">Rp {{ number_format($this->change, 0, ',', '.') }}</span>
+                </div>
+            @elseif($payment_method === 'split')
+                <div class="space-y-2 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+                    <p class="text-xs font-semibold text-blue-700">Pembayaran Campuran</p>
+
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Tunai (Rp)</label>
+                        <input type="number" min="0" wire:model.live.debounce.300ms="split_cash_amount" value="{{ $split_cash_amount }}"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Non-Tunai (Rp)</label>
+                        <input type="number" min="0" wire:model.live.debounce.300ms="split_non_cash_amount" value="{{ $split_non_cash_amount }}"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Metode Non-Tunai</label>
+                        <select wire:model.live="split_non_cash_method"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                            <option value="transfer">Transfer</option>
+                            <option value="card">Kartu</option>
+                        </select>
+                    </div>
+
+                    @error('paid_amount') <p class="text-xs text-red-500">{{ $message }}</p> @enderror
+                </div>
+
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-500">Kembalian</span>
+                    <span class="font-semibold text-green-600">Rp {{ number_format($this->splitChange, 0, ',', '.') }}</span>
+                </div>
+            @else
+                <div class="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <p class="text-xs text-gray-600">
+                        Pembayaran {{ $this->splitNonCashLabel === '-' ? ucfirst($payment_method) : ucfirst($payment_method) }}
+                        sebesar total belanja:
+                        <span class="font-semibold text-gray-800">Rp {{ number_format($this->discountedTotal, 0, ',', '.') }}</span>
+                    </p>
+                </div>
+            @endif
 
             <div>
                 <label class="block text-xs text-gray-500 mb-1">Catatan</label>

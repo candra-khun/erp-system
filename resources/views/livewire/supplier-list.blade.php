@@ -16,6 +16,10 @@
         <input type="text" wire:model.live.debounce.300ms="search" placeholder="Cari supplier..." class="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 sm:w-80">
     </div>
 
+    <div class="mb-4">
+        <livewire:master-data-import-panel type="suppliers" />
+    </div>
+
     <div class="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">

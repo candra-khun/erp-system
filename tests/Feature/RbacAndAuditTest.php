@@ -22,10 +22,10 @@ class RbacAndAuditTest extends TestCase
         $this->seed(RolesAndPermissionsSeeder::class);
 
         $this->assertSame(8, Role::count());
-        $this->assertSame(12, Permission::count());
+        $this->assertSame(18, Permission::count());
 
         $superAdmin = Role::where('name', 'super_admin')->first();
-        $this->assertSame(12, $superAdmin->permissions()->count());
+        $this->assertSame(18, $superAdmin->permissions()->count());
 
         $kasir = Role::where('name', 'kasir')->first();
         $this->assertSame(2, $kasir->permissions()->count());

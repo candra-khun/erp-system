@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\InteractsWithWarehouseAccess;
 use App\Models\CashTransaction;
-use App\Models\Warehouse;
+use App\Rules\WarehouseAccessible;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
@@ -15,7 +16,8 @@ use Livewire\WithPagination;
 #[Layout('components.layouts.erp', ['title' => 'Transaksi Kas'])]
 class CashTransactionList extends Component
 {
-    use WithPagination;
+    /** @use InteractsWithWarehouseAccess<self> */
+    use InteractsWithWarehouseAccess, WithPagination;
 
     #[Url]
     public string $search = '';
@@ -93,7 +95,7 @@ class CashTransactionList extends Component
             'amount' => 'required|numeric|min:0.01',
             'transactionDate' => 'required|date',
             'description' => 'nullable|string|max:500',
-            'warehouseId' => 'nullable|exists:warehouses,id',
+            'warehouseId' => ['nullable', 'exists:warehouses,id', new WarehouseAccessible],
             'paymentMethod' => 'nullable|string|max:50',
         ], [
             'amount.required' => 'Nominal wajib diisi.',
@@ -144,7 +146,10 @@ class CashTransactionList extends Component
 
     public function render(): View
     {
+        $warehouseIds = $this->accessibleWarehouseIds();
+
         $query = CashTransaction::with(['warehouse', 'creator'])
+            ->when($warehouseIds !== null, fn ($q) => $q->whereIn('warehouse_id', $warehouseIds))
             ->when($this->search, fn ($q) => $q->where(function ($sub) {
                 $sub->where('transaction_number', 'like', "%{$this->search}%")
                     ->orWhere('description', 'like', "%{$this->search}%");
@@ -155,7 +160,7 @@ class CashTransactionList extends Component
             ->orderByDesc('transaction_date')
             ->orderByDesc('id');
 
-        $warehouses = Warehouse::orderBy('name')->get(['id', 'name']);
+        $warehouses = $this->accessibleWarehouseOptions();
 
         return view('livewire.cash-transaction-list', [
             'transactions' => $query->paginate(15),

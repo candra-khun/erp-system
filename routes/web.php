@@ -1,17 +1,27 @@
 <?php
 
+use App\Http\Controllers\MasterDataTemplateController;
 use App\Http\Controllers\PdfController;
 use App\Http\Controllers\ProfileController;
 use App\Livewire\AccountPayableList;
 use App\Livewire\AccountReceivableList;
+use App\Livewire\BalanceSheetReport;
+use App\Livewire\BankReconciliationList;
 use App\Livewire\CashTransactionList;
 use App\Livewire\CategoryList;
 use App\Livewire\ChartOfAccounts;
+use App\Livewire\ConsignmentList;
+use App\Livewire\ConsignmentSettlementList;
 use App\Livewire\CustomerList;
 use App\Livewire\Dashboard;
+use App\Livewire\EmployeeList;
+use App\Livewire\GatewayTransactionList;
 use App\Livewire\GoodsReceiptList;
 use App\Livewire\InventoryTurnoverReport;
 use App\Livewire\JournalEntryList;
+use App\Livewire\MarketplaceChannelList;
+use App\Livewire\MarketplaceOrderList;
+use App\Livewire\PayrollList;
 use App\Livewire\PosTerminal;
 use App\Livewire\ProductList;
 use App\Livewire\ProfitLossReport;
@@ -19,7 +29,9 @@ use App\Livewire\PurchaseOrderList;
 use App\Livewire\PurchaseReturnList;
 use App\Livewire\ReorderAlertList;
 use App\Livewire\SalesOrderList;
+use App\Livewire\SalesReport;
 use App\Livewire\SalesReturnList;
+use App\Livewire\ShipmentList;
 use App\Livewire\StockCard;
 use App\Livewire\StockList;
 use App\Livewire\StockOpnameList;
@@ -39,12 +51,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('permission:manage-products')->group(function () {
         Route::get('/products', ProductList::class)->name('products.index');
         Route::get('/categories', CategoryList::class)->name('categories.index');
+        Route::get('/master-data/import-template/products', [MasterDataTemplateController::class, 'products'])
+            ->name('master-data.import-template.products');
+        Route::get('/pdf/product-label/{id}', [PdfController::class, 'productLabel'])->name('pdf.product-label');
     });
     Route::middleware('permission:manage-suppliers')->group(function () {
         Route::get('/suppliers', SupplierList::class)->name('suppliers.index');
+        Route::get('/master-data/import-template/suppliers', [MasterDataTemplateController::class, 'suppliers'])
+            ->name('master-data.import-template.suppliers');
     });
     Route::middleware('permission:manage-customers')->group(function () {
         Route::get('/customers', CustomerList::class)->name('customers.index');
+        Route::get('/master-data/import-template/customers', [MasterDataTemplateController::class, 'customers'])
+            ->name('master-data.import-template.customers');
     });
     Route::middleware('permission:manage-warehouses')->group(function () {
         Route::get('/warehouses', WarehouseList::class)->name('warehouses.index');
@@ -77,6 +96,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('permission:use-pos')->group(function () {
         Route::get('/pos', PosTerminal::class)->name('pos.index');
     });
+    Route::middleware('permission:manage-logistics')->group(function () {
+        Route::get('/shipments', ShipmentList::class)->name('shipments.index');
+        Route::get('/pdf/delivery-note/{id}', [PdfController::class, 'shipmentDeliveryNote'])->name('pdf.delivery-note');
+    });
 
     // PDF Routes (accessible to users who can manage sales)
     Route::middleware('permission:manage-sales')->group(function () {
@@ -91,13 +114,41 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/cash-transactions', CashTransactionList::class)->name('cash-transactions.index');
         Route::get('/account-payables', AccountPayableList::class)->name('account-payables.index');
         Route::get('/account-receivables', AccountReceivableList::class)->name('account-receivables.index');
+        Route::get('/bank-reconciliations', BankReconciliationList::class)->name('bank-reconciliations.index');
     });
 
     // Reports
     Route::middleware('permission:view-dashboard')->group(function () {
+        Route::get('/reports/sales', SalesReport::class)->name('reports.sales');
         Route::get('/reports/profit-loss', ProfitLossReport::class)->name('reports.profit-loss');
+        Route::get('/reports/balance-sheet', BalanceSheetReport::class)->name('reports.balance-sheet');
         Route::get('/reports/inventory-turnover', InventoryTurnoverReport::class)->name('reports.inventory-turnover');
         Route::get('/reorder-alerts', ReorderAlertList::class)->name('reorder-alerts.index');
+    });
+
+    // HR & Payroll (Fase 4)
+    Route::middleware('permission:manage-employees')->group(function () {
+        Route::get('/employees', EmployeeList::class)->name('employees.index');
+    });
+    Route::middleware('permission:manage-payroll')->group(function () {
+        Route::get('/payrolls', PayrollList::class)->name('payrolls.index');
+    });
+
+    // Integrasi Marketplace (Fase 4)
+    Route::middleware('permission:manage-marketplace')->group(function () {
+        Route::get('/marketplace-channels', MarketplaceChannelList::class)->name('marketplace-channels.index');
+        Route::get('/marketplace-orders', MarketplaceOrderList::class)->name('marketplace-orders.index');
+    });
+
+    // Payment Gateway (Fase 4)
+    Route::middleware('permission:manage-gateway')->group(function () {
+        Route::get('/gateway-transactions', GatewayTransactionList::class)->name('gateway-transactions.index');
+    });
+
+    // Manajemen Konsinyasi (Fase 4)
+    Route::middleware('permission:manage-consignment')->group(function () {
+        Route::get('/consignments', ConsignmentList::class)->name('consignments.index');
+        Route::get('/consignment-settlements', ConsignmentSettlementList::class)->name('consignment-settlements.index');
     });
 
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

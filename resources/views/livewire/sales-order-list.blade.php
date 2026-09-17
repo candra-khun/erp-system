@@ -57,11 +57,28 @@
                     </div>
                     <div class="space-y-2">
                         @foreach($items as $index => $item)
+                        @php
+                            $itemProductUnits = [];
+                            if (! empty($item['product_id'])) {
+                                $baseUnitId = $products->first(fn ($p) => (int) $p->id === (int) $item['product_id'])?->base_unit_id;
+                                if ($baseUnitId) {
+                                    $itemProductUnits = $productUnits->filter(
+                                        fn ($u) => (int) $u->id === (int) $baseUnitId || (int) ($u->base_unit_id ?? 0) === (int) $baseUnitId
+                                    )->values();
+                                }
+                            }
+                        @endphp
                         <div class="flex gap-2 items-start">
                             <select wire:model="items.{{ $index }}.product_id" class="flex-1 border-gray-300 rounded-md shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
                                 <option value="">Pilih Produk</option>
                                 @foreach($products as $prod)
                                     <option value="{{ $prod->id }}">{{ $prod->sku }} - {{ $prod->name }}</option>
+                                @endforeach
+                            </select>
+                            <select wire:model="items.{{ $index }}.unit_id" class="w-24 border-gray-300 rounded-md shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500" title="Satuan">
+                                <option value="">Pcs</option>
+                                @foreach($itemProductUnits as $unitOption)
+                                    <option value="{{ $unitOption->id }}">{{ $unitOption->symbol }}</option>
                                 @endforeach
                             </select>
                             <input type="number" min="0.01" step="0.01" wire:model="items.{{ $index }}.quantity" placeholder="Qty" class="w-24 border-gray-300 rounded-md shadow-sm text-sm focus:border-blue-500 focus:ring-blue-500">
@@ -72,6 +89,7 @@
                         </div>
                         @endforeach
                     </div>
+                    <p class="text-xs text-gray-400">Harga diisi per satuan yang dipilih — otomatis dikonversi ke satuan dasar saat disimpan.</p>
                 </div>
 
                 <div>

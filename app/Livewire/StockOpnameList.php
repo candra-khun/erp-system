@@ -4,16 +4,18 @@ declare(strict_types=1);
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\InteractsWithWarehouseAccess;
 use App\Models\Stock;
 use App\Models\StockOpname;
-use App\Models\Warehouse;
+use App\Rules\WarehouseAccessible;
 use App\Services\StockOpnameService;
+use App\Support\WarehouseAccess;
 use Livewire\Component;
 use Livewire\WithPagination;
 
 class StockOpnameList extends Component
 {
-    use WithPagination;
+    use InteractsWithWarehouseAccess, WithPagination;
 
     public string $search = '';
 
@@ -51,8 +53,14 @@ class StockOpnameList extends Component
             return;
         }
 
+        if (! WarehouseAccess::canAccess(auth()->user(), (int) $this->warehouse_id)) {
+            $this->items = [];
+
+            return;
+        }
+
         $stocks = Stock::where('warehouse_id', $this->warehouse_id)
-            ->with('product')
+            ->with('product.baseUnit')
             ->get();
 
         $this->items = $stocks->map(function ($stock): array {
@@ -60,6 +68,7 @@ class StockOpnameList extends Component
                 'product_id' => $stock->product_id,
                 'product_name' => $stock->product?->name ?? '',
                 'sku' => $stock->product?->sku ?? '',
+                'unit_symbol' => $stock->product?->baseUnit?->symbol ?? '',
                 'system_qty' => (float) $stock->quantity,
                 'physical_qty' => (float) $stock->quantity,
                 'notes' => '',
@@ -70,7 +79,7 @@ class StockOpnameList extends Component
     public function store(): void
     {
         $this->validate([
-            'warehouse_id' => 'required|exists:warehouses,id',
+            'warehouse_id' => ['required', 'exists:warehouses,id', new WarehouseAccessible],
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.physical_qty' => 'required|numeric|min:0',
@@ -102,6 +111,7 @@ class StockOpnameList extends Component
     public function start(int $id): void
     {
         $opname = StockOpname::findOrFail($id);
+        $this->authorizeOpnameAccess($opname);
 
         if ($opname->status !== 'draft') {
             return;
@@ -114,6 +124,7 @@ class StockOpnameList extends Component
     public function complete(int $id): void
     {
         $opname = StockOpname::findOrFail($id);
+        $this->authorizeOpnameAccess($opname);
 
         if ($opname->status !== 'in_progress') {
             return;
@@ -126,6 +137,7 @@ class StockOpnameList extends Component
     public function approve(int $id): void
     {
         $opname = StockOpname::with('items')->findOrFail($id);
+        $this->authorizeOpnameAccess($opname);
 
         if ($opname->status !== 'completed' && $opname->status !== 'draft') {
             return;
@@ -136,16 +148,29 @@ class StockOpnameList extends Component
         session()->flash('success', 'Penyesuaian stok berhasil disetujui.');
     }
 
+    /**
+     * Tolak aksi lintas cabang (PRD §2: Admin Cabang mengelola 1 cabang).
+     */
+    private function authorizeOpnameAccess(StockOpname $opname): void
+    {
+        if (! WarehouseAccess::canAccess(auth()->user(), (int) $opname->warehouse_id)) {
+            abort(403, 'Anda tidak memiliki akses ke cabang/gudang opname ini.');
+        }
+    }
+
     public function render()
     {
+        $restrictedIds = $this->accessibleWarehouseIds();
+
         $opnames = StockOpname::with(['warehouse', 'creator'])
+            ->when($restrictedIds !== null, fn ($query) => $query->whereIn('warehouse_id', $restrictedIds))
             ->when($this->search, function ($query): void {
                 $query->where('opname_number', 'like', "%{$this->search}%");
             })
             ->latest()
             ->paginate(15);
 
-        $warehouses = Warehouse::orderBy('name')->get(['id', 'name']);
+        $warehouses = $this->accessibleWarehouseOptions();
 
         return view('livewire.stock-opname-list', compact('opnames', 'warehouses'))
             ->layout('components.layouts.erp', ['title' => 'Stock Opname']);

@@ -12,7 +12,10 @@ use Illuminate\Support\Facades\DB;
 
 class SalesOrderService
 {
-    public function __construct(private readonly JournalService $journalService) {}
+    public function __construct(
+        private readonly JournalService $journalService,
+        private readonly TransactionAuditLogger $audit,
+    ) {}
 
     /**
      * Confirm a draft sales order: deduct stock for every item,
@@ -26,6 +29,8 @@ class SalesOrderService
 
         return DB::transaction(function () use ($salesOrder, $userId) {
             $salesOrder->update(['status' => 'confirmed']);
+
+            $this->audit->logStatusChange($salesOrder, 'draft', 'confirmed', $userId, 'Konfirmasi SO — stok dikurangi');
 
             foreach ($salesOrder->items()->get() as $item) {
                 event(new StockChanged(
@@ -42,6 +47,17 @@ class SalesOrderService
 
             $this->createReceivable($salesOrder, $userId);
             $this->postSalesJournal($salesOrder, $userId);
+
+            // Poin loyalitas member (PRD 4.6)
+            if ($salesOrder->customer_id) {
+                app(LoyaltyService::class)->awardForSale(
+                    (int) $salesOrder->customer_id,
+                    (float) $salesOrder->total_amount,
+                    'sales_order',
+                    (int) $salesOrder->id,
+                    $userId,
+                );
+            }
 
             return $salesOrder->fresh()->load(['customer', 'warehouse', 'items.product', 'creator']);
         });
@@ -80,6 +96,8 @@ class SalesOrderService
             }
 
             $salesOrder->update(['status' => 'cancelled']);
+
+            $this->audit->logStatusChange($salesOrder, 'draft/confirmed', 'cancelled', $userId, 'Pembatalan SO');
 
             return $salesOrder->fresh()->load(['customer', 'warehouse', 'items.product', 'creator']);
         });

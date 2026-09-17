@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Database\Factories\SalesOrderFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -59,6 +60,20 @@ class SalesOrder extends Model
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);
+    }
+
+    /**
+     * Scope ke cabang yang dapat diakses user (null = tanpa batasan).
+     *
+     * @param  list<int>|null  $warehouseIds
+     */
+    public function scopeAccessibleWarehouse(Builder $query, ?array $warehouseIds): void
+    {
+        if ($warehouseIds === null) {
+            return;
+        }
+
+        $query->whereIn('warehouse_id', $warehouseIds);
     }
 
     /**

@@ -23,6 +23,7 @@ class CashTransaction extends Model
         'description',
         'reference_type',
         'reference_id',
+        'payment_method',
         'created_by',
         'transaction_date',
     ];

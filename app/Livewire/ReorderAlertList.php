@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\InteractsWithWarehouseAccess;
 use App\Models\Stock;
 use Illuminate\Contracts\View\View;
 use Livewire\Attributes\Layout;
@@ -12,6 +13,8 @@ use Livewire\Component;
 #[Layout('components.layouts.erp', ['title' => 'Peringatan Stok Rendah'])]
 class ReorderAlertList extends Component
 {
+    use InteractsWithWarehouseAccess;
+
     public function render(): View
     {
         $alerts = Stock::with(['product', 'warehouse'])
@@ -20,6 +23,9 @@ class ReorderAlertList extends Component
             ->where('products.is_active', true)
             ->whereNotNull('products.reorder_point')
             ->where('products.reorder_point', '>', 0)
+            ->when($this->accessibleWarehouseIds() !== null, function ($q): void {
+                $q->whereIn('stocks.warehouse_id', $this->accessibleWarehouseIds());
+            })
             ->select('stocks.*')
             ->get()
             ->map(function (Stock $stock): array {

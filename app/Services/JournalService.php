@@ -131,6 +131,62 @@ class JournalService
     }
 
     /**
+     * Create journal for a POS sale with split settlement.
+     *
+     * Debits one settlement account per payment method (cash drawer, bank) and
+     * credits a single revenue account, optionally with COGS/inventory lines.
+     *
+     * @param  array<int, array{account_id: int, amount: float, label: string}>  $settlements
+     */
+    public function createPosSalesJournal(
+        int $salesTransactionId,
+        array $settlements,
+        int $revenueAccountId,
+        ?float $cogsAmount = null,
+        ?int $cogsAccountId = null,
+        ?int $inventoryAccountId = null,
+        ?int $userId = null,
+        ?string $description = null,
+    ): JournalEntry {
+        $lines = [];
+        $revenueTotal = 0.0;
+
+        foreach ($settlements as $settlement) {
+            $amount = (float) $settlement['amount'];
+            $revenueTotal += $amount;
+
+            $lines[] = [
+                'account_id' => $settlement['account_id'],
+                'type' => 'debit',
+                'amount' => $amount,
+                'description' => $settlement['label'],
+            ];
+        }
+
+        $lines[] = [
+            'account_id' => $revenueAccountId,
+            'type' => 'credit',
+            'amount' => $revenueTotal,
+            'description' => 'Pendapatan penjualan',
+        ];
+
+        if ($cogsAmount !== null && $cogsAccountId !== null && $inventoryAccountId !== null) {
+            $lines[] = ['account_id' => $cogsAccountId, 'type' => 'debit', 'amount' => $cogsAmount, 'description' => 'Harga pokok penjualan'];
+            $lines[] = ['account_id' => $inventoryAccountId, 'type' => 'credit', 'amount' => $cogsAmount, 'description' => 'Pengurangan persediaan'];
+        }
+
+        return $this->createJournal([
+            'journal_date' => now()->toDateString(),
+            'type' => 'sales',
+            'reference_type' => 'sales_transaction',
+            'reference_id' => $salesTransactionId,
+            'description' => $description ?? "Jurnal penjualan POS {$salesTransactionId}",
+            'created_by' => $userId,
+            'lines' => $lines,
+        ]);
+    }
+
+    /**
      * Create journal for Purchase Return.
      * Dr: Accounts Payable, Cr: Inventory Asset
      */

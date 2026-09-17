@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\InteractsWithWarehouseAccess;
 use App\Models\CashTransaction;
 use App\Models\SalesTransaction;
-use App\Models\Warehouse;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
@@ -16,6 +16,9 @@ use Livewire\Component;
 #[Layout('components.layouts.erp', ['title' => 'Laporan Laba Rugi'])]
 class ProfitLossReport extends Component
 {
+    /** @use InteractsWithWarehouseAccess<self> */
+    use InteractsWithWarehouseAccess;
+
     #[Url]
     public string $startDate = '';
 
@@ -156,7 +159,7 @@ class ProfitLossReport extends Component
 
     public function render(): View
     {
-        $warehouses = Warehouse::orderBy('name')->get(['id', 'name']);
+        $warehouses = $this->accessibleWarehouseOptions();
         $report = $this->calculateReport();
 
         return view('livewire.profit-loss-report', [

@@ -19,6 +19,7 @@ class PurchaseOrderService
 {
     public function __construct(
         private JournalService $journalService,
+        private TransactionAuditLogger $audit,
     ) {}
 
     /**
@@ -67,19 +68,60 @@ class PurchaseOrderService
     }
 
     /**
-     * Approve a Purchase Order.
+     * Approve a Purchase Order — berjenjang berdasarkan nominal (PRD 4.3 Should Have).
+     * Level 1: di bawah threshold -> langsung approved.
+     * Level 2: di atas threshold -> perlu approval kedua (finance/owner)
+     *          sebelum status berubah menjadi approved.
      */
     public function approve(PurchaseOrder $po, int $userId): PurchaseOrder
     {
-        if (! in_array($po->status, ['draft', 'submitted'])) {
+        if (! in_array($po->status, ['draft', 'submitted', 'pending_level2'])) {
             throw new \RuntimeException("Cannot approve PO with status: {$po->status}");
+        }
+
+        $threshold = (float) config('erp.po_approval.level1_threshold', 50000000);
+        $total = (float) $po->total_amount;
+
+        // Level-2 approval: user kedua menyetujui PO yang menunggu level 2
+        if ($po->status === 'pending_level2') {
+            if ((int) $po->approved_by === $userId) {
+                throw new \RuntimeException('Approval level 2 harus oleh user yang berbeda dari level 1.');
+            }
+
+            $po->update([
+                'status' => 'approved',
+                'approval_level' => 2,
+                'second_approved_by' => $userId,
+                'second_approved_at' => now(),
+            ]);
+
+            $this->audit->logStatusChange($po, 'pending_level2', 'approved', $userId, 'Approval level 2 PO');
+
+            return $po->fresh();
+        }
+
+        // Level-1 approval: nominal besar -> tunggu approver level 2
+        if ($total > $threshold) {
+            $po->update([
+                'status' => 'pending_level2',
+                'approval_level' => 1,
+                'approved_by' => $userId,
+                'approved_at' => now(),
+            ]);
+
+            $this->audit->logStatusChange($po, 'draft/submitted', 'pending_level2', $userId, 'Approval level 1 — menunggu level 2');
+
+            return $po->fresh();
         }
 
         $po->update([
             'status' => 'approved',
+            'approval_level' => 1,
             'approved_by' => $userId,
             'approved_at' => now(),
         ]);
+
+        $this->audit->logStatusChange($po, 'draft/submitted', 'approved', $userId, 'Approval level 1');
 
         return $po->fresh();
     }
@@ -94,6 +136,8 @@ class PurchaseOrderService
         }
 
         $po->update(['status' => 'sent_to_supplier']);
+
+        $this->audit->logStatusChange($po, 'approved', 'sent_to_supplier', auth()->id(), 'PO dikirim ke supplier');
 
         return $po->fresh();
     }
@@ -175,6 +219,31 @@ class PurchaseOrderService
             } elseif ($anyReceived) {
                 $po->update(['status' => 'partial_received']);
             }
+
+            // Audit trail: pembuatan GRN (transaksi) + transisi status PO
+            $this->audit->log(
+                $gr,
+                'goods_received',
+                null,
+                [
+                    'grn_number' => $gr->grn_number,
+                    'po_number' => $po->po_number,
+                    'total_received_amount' => $totalReceivedAmount,
+                    'items' => collect($items)->map(fn ($item) => [
+                        'quantity' => $item['quantity'],
+                        'batch_number' => $item['batch_number'] ?? null,
+                        'expiry_date' => $item['expiry_date'] ?? null,
+                    ])->all(),
+                ],
+                $userId,
+            );
+            $this->audit->logStatusChange(
+                $po,
+                $po->status === 'received' ? 'approved/sent_to_supplier' : $po->status,
+                $po->status,
+                $userId,
+                'Penerimaan barang GRN '.$gr->grn_number,
+            );
 
             AccountPayable::create([
                 'ap_number' => $this->generateApNumber(),
@@ -284,6 +353,8 @@ class PurchaseOrderService
             }
 
             $pr->update(['status' => 'processed']);
+
+            $this->audit->log($pr, 'purchase_return_processed', ['status' => 'draft'], ['status' => 'processed'], $userId);
 
             return $pr->fresh()->load('items');
         });

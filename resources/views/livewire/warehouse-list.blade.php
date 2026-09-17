@@ -25,6 +25,7 @@
                         <th class="px-4 py-3">Kode</th>
                         <th class="px-4 py-3">Nama</th>
                         <th class="px-4 py-3">Alamat</th>
+                        <th class="px-4 py-3">User</th>
                         <th class="px-4 py-3">Status</th>
                         <th class="px-4 py-3 text-right">Aksi</th>
                     </tr>
@@ -35,6 +36,9 @@
                             <td class="px-4 py-3 font-mono text-sm">{{ $warehouse->code }}</td>
                             <td class="px-4 py-3 font-medium">{{ $warehouse->name }}</td>
                             <td class="px-4 py-3 text-gray-600">{{ Str::limit($warehouse->address, 50) }}</td>
+                            <td class="px-4 py-3 text-gray-600">
+                                <span class="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">{{ $warehouse->users_count }} user</span>
+                            </td>
                             <td class="px-4 py-3">
                                 @if ($warehouse->is_active)
                                     <span class="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-full">Aktif</span>
@@ -51,7 +55,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="px-4 py-8 text-center text-gray-500">Tidak ada data gudang.</td>
+                            <td colspan="6" class="px-4 py-8 text-center text-gray-500">Tidak ada data gudang.</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -85,6 +89,15 @@
                     <div class="flex items-center gap-2">
                         <input type="checkbox" wire:model="is_active" id="is_active" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
                         <label for="is_active" class="text-sm font-medium text-gray-700">Aktif</label>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">User yang ditugaskan</label>
+                        <p class="text-xs text-gray-500 mb-2">Kosong = user tersebut bisa akses semua cabang (staf pusat). Terisi = user hanya bisa akses cabang yang dipilih.</p>
+                        <select wire:model="userIds" multiple size="6" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                            @foreach ($assignableUsers as $user)
+                                <option value="{{ $user->id }}">{{ $user->name }}</option>
+                            @endforeach
+                        </select>
                     </div>
                     <div class="flex justify-end gap-3 pt-4 border-t">
                         <button type="button" wire:click="$set('showModal', false)" class="px-4 py-2 text-gray-600 hover:text-gray-800">Batal</button>

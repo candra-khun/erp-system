@@ -8,13 +8,15 @@ use App\Models\ProductPrice;
 use App\Models\Supplier;
 use App\Models\Warehouse;
 use App\Observers\MasterDataAuditObserver;
+use App\Services\PaymentGateway\PaymentGatewayManager;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        //
+        // Payment gateway manager (PRD Fase 4 #14) — provider-agnostic.
+        $this->app->singleton(PaymentGatewayManager::class);
     }
 
     public function boot(): void

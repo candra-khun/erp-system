@@ -29,6 +29,9 @@ class PurchaseOrder extends Model
         'created_by',
         'approved_by',
         'approved_at',
+        'approval_level',
+        'second_approved_by',
+        'second_approved_at',
     ];
 
     protected function casts(): array
@@ -41,6 +44,7 @@ class PurchaseOrder extends Model
             'discount_amount' => 'decimal:2',
             'total_amount' => 'decimal:2',
             'approved_at' => 'datetime',
+            'second_approved_at' => 'datetime',
         ];
     }
 

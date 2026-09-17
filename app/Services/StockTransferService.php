@@ -5,17 +5,21 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Events\StockChanged;
+use App\Models\Product;
+use App\Models\ProductUnit;
 use App\Models\StockTransfer;
 use App\Models\StockTransferItem;
 use Illuminate\Support\Facades\DB;
 
 class StockTransferService
 {
+    public function __construct(private readonly TransactionAuditLogger $audit) {}
+
     /**
      * Create a new stock transfer (status: draft).
      *
      * @param  array{source_warehouse_id: int|string, destination_warehouse_id: int|string, notes?: string}  $data
-     * @param  list<array{product_id: int|string, quantity: float|int|string}>  $items
+     * @param  list<array{product_id: int|string, quantity: float|int|string, unit_id?: int|string|null}>  $items
      */
     public function createTransfer(array $data, array $items, ?int $userId = null): StockTransfer
     {
@@ -30,10 +34,12 @@ class StockTransferService
             ]);
 
             foreach ($items as $item) {
+                $baseQty = $this->convertItemToBaseUnit($item);
+
                 StockTransferItem::create([
                     'stock_transfer_id' => $transfer->id,
                     'product_id' => (int) $item['product_id'],
-                    'quantity' => (float) $item['quantity'],
+                    'quantity' => $baseQty,
                     'received_quantity' => 0,
                 ]);
             }
@@ -57,6 +63,8 @@ class StockTransferService
                 'approved_by' => $userId,
                 'approved_at' => now(),
             ]);
+
+            $this->audit->logStatusChange($transfer, 'draft', 'approved', $userId, 'Approval transfer — stok keluar dari gudang asal');
 
             foreach ($transfer->items as $item) {
                 event(new StockChanged(
@@ -140,6 +148,18 @@ class StockTransferService
                 $transfer->update(['status' => 'received']);
             }
 
+            $this->audit->log(
+                $transfer,
+                'transfer_received',
+                null,
+                [
+                    'transfer_number' => $transfer->transfer_number,
+                    'status' => $transfer->status,
+                    'items' => collect($items)->map(fn ($entry) => ['quantity' => $entry['quantity']])->all(),
+                ],
+                $userId,
+            );
+
             return $transfer->fresh()->load('items');
         });
     }
@@ -169,5 +189,29 @@ class StockTransferService
         $seq = $last ? ((int) substr((string) $last, -4)) + 1 : 1;
 
         return $prefix.str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Convert item quantity to the product's base unit when unit_id is provided.
+     *
+     * @param  array{product_id: int|string, quantity: float|int|string, unit_id?: int|string|null}  $item
+     */
+    private function convertItemToBaseUnit(array $item): float
+    {
+        $quantity = (float) $item['quantity'];
+
+        if (empty($item['unit_id'])) {
+            return $quantity;
+        }
+
+        $unit = ProductUnit::findOrFail((int) $item['unit_id']);
+
+        if ($unit->is_base) {
+            return $quantity;
+        }
+
+        $product = Product::findOrFail((int) $item['product_id']);
+
+        return $product->convertToBaseUnit($quantity, $unit);
     }
 }

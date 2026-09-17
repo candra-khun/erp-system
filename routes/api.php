@@ -2,11 +2,14 @@
 
 use App\Http\Controllers\Api\AccountPayableController;
 use App\Http\Controllers\Api\AccountReceivableController;
+use App\Http\Controllers\Api\BankReconciliationController;
 use App\Http\Controllers\Api\CashTransactionController;
+use App\Http\Controllers\Api\CourierController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\GoodsReceiptController;
 use App\Http\Controllers\Api\JournalEntryController;
+use App\Http\Controllers\Api\LoyaltyController;
 use App\Http\Controllers\Api\PosShiftController;
 use App\Http\Controllers\Api\ProductCategoryController;
 use App\Http\Controllers\Api\ProductController;
@@ -17,6 +20,7 @@ use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\SalesOrderController;
 use App\Http\Controllers\Api\SalesReturnController;
 use App\Http\Controllers\Api\SalesTransactionController;
+use App\Http\Controllers\Api\ShipmentController;
 use App\Http\Controllers\Api\StockMovementController;
 use App\Http\Controllers\Api\StockOpnameController;
 use App\Http\Controllers\Api\StockTransferController;
@@ -90,6 +94,24 @@ Route::middleware('auth:sanctum')->as('api.')->group(function () {
             ->name('sales-orders.confirm');
         Route::post('sales-orders/{salesOrder}/cancel', [SalesOrderController::class, 'cancel'])
             ->name('sales-orders.cancel');
+
+        // Distribusi & Logistik (Fase 3 — PRD 4.7)
+        Route::middleware('permission:manage-logistics')->group(function () {
+            Route::apiResource('shipments', ShipmentController::class)->only(['index', 'show', 'store']);
+            Route::post('shipments/{shipment}/dispatch', [ShipmentController::class, 'dispatch'])->name('shipments.dispatch');
+            Route::post('shipments/{shipment}/in-transit', [ShipmentController::class, 'markInTransit'])->name('shipments.in-transit');
+            Route::post('shipments/{shipment}/deliver', [ShipmentController::class, 'markDelivered'])->name('shipments.deliver');
+            Route::post('shipments/{shipment}/cancel', [ShipmentController::class, 'cancel'])->name('shipments.cancel');
+            Route::apiResource('couriers', CourierController::class);
+        });
+
+        // CRM Loyalitas (Fase 3 — PRD 4.6)
+        Route::middleware('permission:manage-customers')->group(function () {
+            Route::get('customers/{customer}/loyalty', [LoyaltyController::class, 'show'])->name('customers.loyalty.show');
+            Route::post('customers/{customer}/loyalty/redeem', [LoyaltyController::class, 'redeem'])->name('customers.loyalty.redeem');
+            Route::get('customers/{customer}/communications', [LoyaltyController::class, 'communications'])->name('customers.communications.index');
+            Route::post('customers/{customer}/communications', [LoyaltyController::class, 'storeCommunication'])->name('customers.communications.store');
+        });
         Route::apiResource('sales-returns', SalesReturnController::class)->only(['index', 'store', 'show']);
         Route::post('sales-returns/{salesReturn}/approve', [SalesReturnController::class, 'approve'])
             ->name('sales-returns.approve');
@@ -116,8 +138,16 @@ Route::middleware('auth:sanctum')->as('api.')->group(function () {
             ->name('account-receivables.pay');
         Route::apiResource('cash-transactions', CashTransactionController::class);
         Route::apiResource('journal-entries', JournalEntryController::class);
-        Route::post('journal-entries/{journalEntry}/post', [JournalEntryController::class, 'post'])
-            ->name('journal-entries.post');
+        Route::post('journal-entries/{journalEntry}/post', [JournalEntryController::class, 'post']);
+
+        // Rekonsiliasi Bank (Fase 3 — PRD 4.5 Could Have)
+        Route::get('bank-reconciliations', [BankReconciliationController::class, 'index'])->name('bank-reconciliations.index');
+        Route::post('bank-reconciliations', [BankReconciliationController::class, 'store'])->name('bank-reconciliations.store');
+        Route::get('bank-reconciliations/{bankReconciliation}', [BankReconciliationController::class, 'show'])->name('bank-reconciliations.show');
+        Route::post('bank-reconciliations/{bankReconciliation}/rematch', [BankReconciliationController::class, 'rematch'])->name('bank-reconciliations.rematch');
+        Route::post('bank-reconciliations/{bankReconciliation}/complete', [BankReconciliationController::class, 'complete'])->name('bank-reconciliations.complete');
+        Route::post('bank-reconciliations/{bankReconciliation}/cancel', [BankReconciliationController::class, 'cancel'])->name('bank-reconciliations.cancel');
+        Route::post('bank-statement-lines/{line}/match', [BankReconciliationController::class, 'matchLine'])->name('bank-statement-lines.match');
     });
 
     // Dashboard & Reports
