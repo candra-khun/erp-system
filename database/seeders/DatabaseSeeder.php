@@ -24,6 +24,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             MasterDataSeeder::class,
             RolesAndPermissionsSeeder::class,
+            RoleUserSeeder::class,
             ChartOfAccountsSeeder::class,
         ]);
     }

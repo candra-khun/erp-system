@@ -12,42 +12,45 @@ class RolesAndPermissionsSeeder extends Seeder
     /**
      * Permission registry grouped by module.
      *
-     * @var array<string, list<string>>
+     * @var array<string, array<string, string>>
      */
     private array $permissions = [
         'master-data' => [
-            'manage-products',
-            'manage-suppliers',
-            'manage-customers',
-            'manage-warehouses',
+            'manage-products' => 'Kelola produk, kategori, dan satuan',
+            'manage-suppliers' => 'Kelola data pemasok',
+            'manage-customers' => 'Kelola data pelanggan',
+            'manage-warehouses' => 'Kelola cabang/gudang',
         ],
         'inventory' => [
-            'view-inventory',
-            'manage-transfers',
-            'manage-opnames',
+            'view-inventory' => 'Lihat stok dan kartu stok',
+            'manage-transfers' => 'Kelola transfer stok antar cabang',
+            'manage-opnames' => 'Kelola stock opname',
         ],
         'purchasing' => [
-            'manage-purchases',
+            'manage-purchases' => 'Kelola purchase order dan penerimaan barang',
         ],
         'sales' => [
-            'manage-sales',
-            'use-pos',
-            'manage-logistics',
+            'manage-sales' => 'Kelola sales order dan retur penjualan',
+            'use-pos' => 'Akses kasir/POS',
+            'manage-logistics' => 'Kelola pengiriman dan surat jalan',
         ],
         'finance' => [
-            'manage-finance',
+            'manage-finance' => 'Kelola kas, jurnal, dan laporan keuangan',
+            'manage-payroll' => 'Kelola penggajian karyawan',
         ],
         'hr' => [
-            'manage-employees',
-            'manage-payroll',
+            'manage-employees' => 'Kelola data karyawan',
+            'manage-attendance' => 'Kelola absensi, shift, lembur, dan cuti',
+            'view-attendance' => 'Lihat rekap absensi (tanpa ubah)',
         ],
         'integrations' => [
-            'manage-marketplace',
-            'manage-gateway',
-            'manage-consignment',
+            'manage-marketplace' => 'Kelola channel marketplace',
+            'manage-gateway' => 'Kelola payment gateway',
+            'manage-consignment' => 'Kelola konsinyasi dan settlement',
         ],
         'system' => [
-            'view-dashboard',
+            'manage-rbac' => 'Kelola role, permission, dan user',
+            'view-dashboard' => 'Akses dashboard utama',
         ],
     ];
 
@@ -62,28 +65,38 @@ class RolesAndPermissionsSeeder extends Seeder
             'manage-products', 'manage-suppliers', 'manage-customers', 'manage-warehouses',
             'view-inventory', 'manage-transfers', 'manage-opnames',
             'manage-purchases', 'manage-sales', 'use-pos', 'view-dashboard',
-            'manage-employees', 'manage-consignment',
+            'manage-employees', 'manage-consignment', 'manage-attendance', 'view-attendance',
         ],
         'kasir' => ['use-pos', 'view-dashboard'],
         'staff_gudang' => ['view-inventory', 'manage-transfers', 'manage-opnames', 'view-dashboard'],
         'staff_pembelian' => ['manage-purchases', 'manage-suppliers', 'view-inventory', 'view-dashboard'],
         'staff_keuangan' => ['manage-finance', 'manage-payroll', 'view-dashboard'],
         'sales_marketing' => ['manage-sales', 'manage-customers', 'manage-logistics', 'manage-marketplace', 'view-dashboard'],
-        'owner' => ['view-dashboard'],
+        'owner' => ['view-dashboard', 'view-attendance'],
     ];
 
     public function run(): void
     {
         // Create all permissions
         $created = [];
-        foreach ($this->permissions as $group => $names) {
-            foreach ($names as $name) {
-                $created[$name] = Permission::firstOrCreate(
+        foreach ($this->permissions as $group => $items) {
+            foreach ($items as $name => $description) {
+                $created[$name] = Permission::updateOrCreate(
                     ['name' => $name],
-                    ['description' => 'Akses modul '.$group]
+                    [
+                        'display_name' => ucwords(str_replace('-', ' ', $name)),
+                        'group' => $group,
+                        'description' => $description,
+                    ]
                 );
             }
         }
+
+        // Hapus permission lama yang sudah tidak dipakai dari registry
+        // (hanya yang belum melekat ke role manapun).
+        Permission::whereNotIn('name', array_keys($created))
+            ->whereDoesntHave('roles')
+            ->delete();
 
         // Create roles and attach permissions
         foreach ($this->roleMatrix as $roleName => $permissionNames) {

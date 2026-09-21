@@ -27,6 +27,7 @@ class Employee extends Model
         'npwp',
         'user_id',
         'warehouse_id',
+        'work_shift_id',
         'position',
         'department',
         'phone',
@@ -67,6 +68,38 @@ class Employee extends Model
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);
+    }
+
+    /**
+     * @return BelongsTo<WorkShift, $this>
+     */
+    public function workShift(): BelongsTo
+    {
+        return $this->belongsTo(WorkShift::class);
+    }
+
+    /**
+     * @return HasMany<EmployeeShiftSchedule>
+     */
+    public function shiftSchedules(): HasMany
+    {
+        return $this->hasMany(EmployeeShiftSchedule::class);
+    }
+
+    /**
+     * @return HasMany<Attendance>
+     */
+    public function attendances(): HasMany
+    {
+        return $this->hasMany(Attendance::class);
+    }
+
+    /**
+     * @return HasMany<OvertimeRequest>
+     */
+    public function overtimeRequests(): HasMany
+    {
+        return $this->hasMany(OvertimeRequest::class);
     }
 
     /**

@@ -5,6 +5,7 @@ use App\Http\Controllers\PdfController;
 use App\Http\Controllers\ProfileController;
 use App\Livewire\AccountPayableList;
 use App\Livewire\AccountReceivableList;
+use App\Livewire\AttendanceList;
 use App\Livewire\BalanceSheetReport;
 use App\Livewire\BankReconciliationList;
 use App\Livewire\CashTransactionList;
@@ -14,13 +15,16 @@ use App\Livewire\ConsignmentList;
 use App\Livewire\ConsignmentSettlementList;
 use App\Livewire\CustomerList;
 use App\Livewire\Dashboard;
+use App\Livewire\EmployeeLeaveList;
 use App\Livewire\EmployeeList;
 use App\Livewire\GatewayTransactionList;
 use App\Livewire\GoodsReceiptList;
+use App\Livewire\HolidayList;
 use App\Livewire\InventoryTurnoverReport;
 use App\Livewire\JournalEntryList;
 use App\Livewire\MarketplaceChannelList;
 use App\Livewire\MarketplaceOrderList;
+use App\Livewire\OvertimeRequestList;
 use App\Livewire\PayrollList;
 use App\Livewire\PosTerminal;
 use App\Livewire\ProductList;
@@ -28,9 +32,11 @@ use App\Livewire\ProfitLossReport;
 use App\Livewire\PurchaseOrderList;
 use App\Livewire\PurchaseReturnList;
 use App\Livewire\ReorderAlertList;
+use App\Livewire\RolePermissionList;
 use App\Livewire\SalesOrderList;
 use App\Livewire\SalesReport;
 use App\Livewire\SalesReturnList;
+use App\Livewire\ShiftScheduleList;
 use App\Livewire\ShipmentList;
 use App\Livewire\StockCard;
 use App\Livewire\StockList;
@@ -38,6 +44,7 @@ use App\Livewire\StockOpnameList;
 use App\Livewire\StockTransferList;
 use App\Livewire\SupplierList;
 use App\Livewire\WarehouseList;
+use App\Livewire\WorkShiftList;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -129,6 +136,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // HR & Payroll (Fase 4)
     Route::middleware('permission:manage-employees')->group(function () {
         Route::get('/employees', EmployeeList::class)->name('employees.index');
+
+        // Modul Absensi (HR — Manajemen Kehadiran)
+        Route::get('/attendances', AttendanceList::class)->name('attendances.index');
+        Route::get('/work-shifts', WorkShiftList::class)->name('work-shifts.index');
+        Route::get('/shift-schedules', ShiftScheduleList::class)->name('shift-schedules.index');
+        Route::get('/overtime-requests', OvertimeRequestList::class)->name('overtime-requests.index');
+        Route::get('/employee-leaves', EmployeeLeaveList::class)->name('employee-leaves.index');
+        Route::get('/holidays', HolidayList::class)->name('holidays.index');
     });
     Route::middleware('permission:manage-payroll')->group(function () {
         Route::get('/payrolls', PayrollList::class)->name('payrolls.index');
@@ -149,6 +164,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('permission:manage-consignment')->group(function () {
         Route::get('/consignments', ConsignmentList::class)->name('consignments.index');
         Route::get('/consignment-settlements', ConsignmentSettlementList::class)->name('consignment-settlements.index');
+    });
+
+    // Manajemen Role & Permission (RBAC)
+    Route::middleware('permission:manage-rbac')->group(function () {
+        Route::get('/role-permissions', RolePermissionList::class)->name('role-permissions.index');
     });
 
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

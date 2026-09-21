@@ -67,7 +67,7 @@ class PayrollService
     /**
      * Hasilkan payroll untuk semua karyawan aktif di cabang periode.
      *
-     * @param  array{working_days?: float, overtime_hours?: float, overtime_rate?: float}  $options
+     * @param  array{working_days?: float, overtime_hours?: float, overtime_rate?: float, use_attendance?: bool}  $options
      * @return array{period: PayrollPeriod, created: int, skipped: int}
      *
      * @throws RuntimeException bila periode tidak ditemukan atau sudah digenerate.
@@ -81,8 +81,8 @@ class PayrollService
                 throw new RuntimeException('Periode '.$period->label.' berstatus '.$period->status->label.' — tidak dapat digenerate ulang.');
             }
 
-            $workingDays = (float) ($options['working_days'] ?? 22);
-            $overtimeHours = (float) ($options['overtime_hours'] ?? 0);
+            $useAttendance = (bool) ($options['use_attendance'] ?? false);
+            $defaultWorkingDays = (float) ($options['working_days'] ?? 22);
             $overtimeRate = (float) ($options['overtime_rate'] ?? 0);
             $created = 0;
 
@@ -98,6 +98,26 @@ class PayrollService
             $components = PayrollComponent::where('is_active', true)->orderBy('type')->get();
 
             foreach ($employees as $employee) {
+                // Ambil rekap absensi & lembur bila modul absensi diaktifkan
+                // (hanya untuk karyawan di cabang periode tersebut).
+                $workingDays = $defaultWorkingDays;
+                $overtimeHours = (float) ($options['overtime_hours'] ?? 0);
+
+                if ($useAttendance && $period->warehouse_id !== null && $employee->warehouse_id === $period->warehouse_id) {
+                    $recap = app(AttendanceService::class)->recap(
+                        $employee,
+                        $period->start_date->toDateString(),
+                        $period->end_date->toDateString(),
+                    );
+
+                    $presentDays = $recap['present'] + $recap['late'];
+                    if ($presentDays > 0) {
+                        $workingDays = (float) $presentDays;
+                    }
+
+                    $overtimeHours = $recap['overtime_hours'];
+                }
+
                 $payroll = $this->buildPayroll($period, $employee, $workingDays, $overtimeHours, $overtimeRate);
 
                 if ($payroll === null) {
